@@ -78,6 +78,17 @@ jobs:
           path: docs/screenshots/*.png
           retention-days: 14
 
+  consistency:
+    name: Docs match the code
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read, issues: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - env: { GH_TOKEN: "${{ github.token }}" }
+        run: python3 tools/consistency_check.py --config tools/consistency.json
+
   docker:
     name: Docker image builds and starts
     runs-on: ubuntu-latest

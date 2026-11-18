@@ -45,6 +45,9 @@ flowchart LR
 | `nsdp/transport.py` | sockets, retries, sequence matching, packet log |
 | `nsdp/client.py` | typed reads and authenticated writes for one switch |
 | `monitor.py`, `notify.py` | background sampling, history, events, metrics, webhook |
+| `config.py`, `store.py` | commented TOML configuration with env overrides; the list of switches |
+| `backups.py`, `diff.py` | stored backups, comparison of two configurations |
+| `web/audit.py` | audit log of changes |
 | `manager.py` | list of switches, discovery, backup and restore |
 | `web/app.py`, `web/auth.py` | HTTP API, login, security headers |
 | `web/static/` | single page app, no build step |

@@ -33,6 +33,14 @@ rules and reboots. Extend it together with the code.
 
 Set `SWITCHYARD_CHROMIUM` to a Chromium binary; both the e2e tests and the screenshot tool use it.
 
+## Generated docs and checks
+
+- `python tools/gen_api_doc.py` rewrites `docs/API.md` from the OpenAPI description.
+- `python tools/consistency_check.py` (config in `tools/consistency.json`) checks docs against code:
+  config keys, routes, modules, retired terms, closed-issue references, changelog structure, screenshot
+  freshness. CI runs it; run it before a release (`--version x.y.z`).
+- `python tools/check_js.py` syntax-checks the UI scripts.
+
 ## Release
 
 Update `CHANGELOG.md`, bump `__version__`, tag `vX.Y.Z`. The release workflow runs the gates,

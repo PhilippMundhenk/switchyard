@@ -26,7 +26,9 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.13", cache: pip }
       - run: pip install -e ".[dev]" build
-      - run: ruff check . && ruff format --check .
+      - run: ruff check . && ruff format --check . && python tools/check_js.py
+      - run: python tools/consistency_check.py --version ${GITHUB_REF_NAME#v}
+        env: { GH_TOKEN: "${{ github.token }}" }
       - run: pytest -m "not e2e" --cov
       - run: python -m playwright install --with-deps chromium
       - run: pytest -m e2e tests/e2e

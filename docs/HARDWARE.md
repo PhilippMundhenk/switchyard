@@ -12,7 +12,7 @@ Switchyard has so far only run against a simulator. Take it slowly and keep a wa
 
 ## Steps
 
-1. Start Switchyard and open *Activity* in a second tab.
+1. Start Switchyard and open *Protocol log* in a second tab.
 2. *Switches*, *Search network*. The switch should appear with model and firmware. If not, see
    [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 3. Add it and open it. *Overview* shows the ports; plug a cable in and watch a port change.
@@ -38,7 +38,7 @@ Try these last, on a switch you can afford to lose, with stable power:
 ## Reporting
 
 Open a *Hardware report* issue. For a bug, copy the log with *Copy for bug report* on the
-*Activity* page. Passwords are blanked. Remove MAC addresses and IPs you want to keep private.
+*Protocol log* page. Passwords are blanked. Remove MAC addresses and IPs you want to keep private.
 
 ## Known caveats
 

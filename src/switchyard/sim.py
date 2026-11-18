@@ -57,6 +57,7 @@ class SimSwitch:
     traffic: bool = True
     lag_groups: int = 0  # 0 = by size: 2 for 5-port models, 4 otherwise
     tftp_drop_blocks: set[int] = field(default_factory=set)  # lose the first ACK of these
+    garble: int = 0  # non-zero: answer every setting with random bytes (seeded), for fuzz tests
 
     def __post_init__(self):
         self._mac = parse_mac(self.mac)
@@ -151,6 +152,17 @@ class SimSwitch:
         return self._reply(request, tlvs=out)
 
     def _get(self, tag: int, arg: bytes) -> list[bytes] | None:
+        if self.garble and tag not in (T.MAC, T.MODEL):
+            import random
+
+            rng = random.Random(self.garble * 65599 + tag)
+            return [
+                bytes(rng.randrange(256) for _ in range(rng.choice([0, 1, 2, 3, 5, 9, 17, 40])))
+                for _ in range(rng.choice([1, 1, 2, 8]))
+            ]
+        return self._get_real(tag, arg)
+
+    def _get_real(self, tag: int, arg: bytes) -> list[bytes] | None:
         n = self.ports
         every = range(1, n + 1)
         simple = {

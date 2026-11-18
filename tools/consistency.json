@@ -1,0 +1,118 @@
+{
+  "checks": [
+    {
+      "type": "listed",
+      "name": "config-keys",
+      "severity": "error",
+      "source": [
+        "src/switchyard/config.py"
+      ],
+      "pattern": "\\(\\s*\"(\\w+)\",\\s*\"(\\w+)\",",
+      "targets": [
+        {
+          "file": "docs/CONFIGURATION.md",
+          "format": "{}"
+        }
+      ],
+      "ignore": [
+        "true"
+      ]
+    },
+    {
+      "type": "listed",
+      "name": "routes",
+      "severity": "error",
+      "source": [
+        "src/switchyard/web/app.py"
+      ],
+      "pattern": "@api\\.(?:get|put|post|patch|delete)\\(\\s*\"(/[^\"]*)\"",
+      "targets": [
+        {
+          "file": "docs/API.md",
+          "format": "`/api{}`"
+        }
+      ]
+    },
+    {
+      "type": "mentioned",
+      "name": "modules",
+      "severity": "warn",
+      "files": [
+        "src/switchyard/**/*.py"
+      ],
+      "ignore": [
+        "__init__",
+        "__main__",
+        "netif",
+        "tags",
+        "packet"
+      ],
+      "docs": [
+        "docs/DESIGN.md"
+      ]
+    },
+    {
+      "type": "retired",
+      "name": "retired-terms",
+      "severity": "error",
+      "scope": [
+        "README.md",
+        "docs/*.md",
+        "docs/adr/*.md",
+        "src/switchyard/web/static/*.js",
+        "src/switchyard/web/static/views/*.js"
+      ],
+      "terms": [
+        {
+          "regex": "\\*Activity\\*|Activity page|Activity log",
+          "hint": "the page is called Protocol log; link changes are on Events"
+        },
+        {
+          "term": "Plus Utility 2.7.8 and",
+          "hint": "avoid implying redistribution",
+          "severity": "warn"
+        }
+      ]
+    },
+    {
+      "type": "closed_issues",
+      "name": "closed-issues",
+      "docs": [
+        "README.md",
+        "docs/*.md",
+        "docs/adr/*.md"
+      ]
+    },
+    {
+      "type": "changelog",
+      "name": "changelog",
+      "file": "CHANGELOG.md"
+    },
+    {
+      "type": "fresh",
+      "name": "screenshots",
+      "severity": "warn",
+      "items": [
+        {
+          "image": "docs/screenshots/switches.png",
+          "sources": [
+            "src/switchyard/web/static/views/switches.js",
+            "src/switchyard/web/static/style.css"
+          ]
+        },
+        {
+          "image": "docs/screenshots/vlan.png",
+          "sources": [
+            "src/switchyard/web/static/views/tabs.js"
+          ]
+        },
+        {
+          "image": "docs/screenshots/log.png",
+          "sources": [
+            "src/switchyard/web/static/views/log.js"
+          ]
+        }
+      ]
+    }
+  ]
+}

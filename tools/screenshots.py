@@ -149,13 +149,15 @@ def main() -> int:
                     time.sleep(pause)
                     page.screenshot(path=str(out / name))
 
-                shot("switches.png", "/", "switch-card")
+                time.sleep(3)  # let the monitor take a few samples
+                shot("switches.png", "/", "minipanel")
                 base = f"/switch/{MAC}"
                 shot("overview.png", f"{base}/overview", "port-panel")
                 shot("vlan.png", f"{base}/vlan", "vlan-matrix")
                 shot("qos.png", f"{base}/qos", "qos-save")
                 shot("lag.png", f"{base}/lag", "lag-matrix")
                 shot("firmware.png", f"{base}/firmware", "fw-file")
+                shot("events.png", "/events", "audit-row")
                 page.goto(f"{server.url}/#/log")
                 page.reload()
                 page.get_by_test_id("log-row").first.wait_for()

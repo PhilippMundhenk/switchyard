@@ -104,7 +104,7 @@ All keys: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 - [docs/HARDWARE.md](docs/HARDWARE.md) first run on a real switch, recovery, compatibility list
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) Docker, systemd, reverse proxy, routed networks
-- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) every setting
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) every setting; [docs/API.md](docs/API.md) every HTTP route
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) nothing found, password refused, locked out
 - [docs/security.md](docs/security.md) what is protected and what is not
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) the NSDP protocol as Switchyard speaks it
