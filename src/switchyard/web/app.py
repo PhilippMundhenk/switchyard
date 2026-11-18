@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -27,6 +28,7 @@ from ..store import Store
 from .auth import COOKIE, Auth
 
 log = logging.getLogger(__name__)
+MAC_PATH = re.compile(r"^(/api/devices/)([0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5})(/.*)?$")
 STATIC = Path(__file__).parent / "static"
 
 VlanMode = Literal["disabled", "port_basic", "port_advanced", "dot1q_basic", "dot1q_advanced"]
@@ -196,6 +198,10 @@ def create_app(config: Config) -> FastAPI:
     @app.middleware("http")
     async def guard(request: Request, call_next):
         path = request.url.path
+        match = MAC_PATH.match(path)
+        if match:  # accept upper case and dashes in MAC addresses
+            mac = match.group(2).lower().replace("-", ":")
+            request.scope["path"] = path = f"{match.group(1)}{mac}{match.group(3) or ''}"
         if path.startswith("/api/"):
             if request.method not in ("GET", "HEAD", "OPTIONS"):
                 origin = request.headers.get("origin")
@@ -230,11 +236,11 @@ def create_app(config: Config) -> FastAPI:
 
     @app.exception_handler(AuthError)
     async def _switch_auth(request, exc):
-        return error(409, "switch_auth", str(exc), status=exc.status)
+        return error(409, "switch_auth", str(exc), switch_status=exc.status)
 
     @app.exception_handler(NsdpError)
     async def _switch_error(request, exc):
-        return error(502, "switch_error", str(exc), status=exc.status, tag=exc.tag)
+        return error(502, "switch_error", str(exc), switch_status=exc.status, tag=exc.tag)
 
     @app.exception_handler(ValueError)
     async def _invalid(request, exc):

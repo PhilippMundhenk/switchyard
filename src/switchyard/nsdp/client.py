@@ -171,7 +171,11 @@ class SwitchClient:
 
     async def _credentials(self, password: str) -> tuple[int, bytes]:
         if self.password_mode is None:
-            reply = await self._read([(T.PASSWORD_MODE, b"")])
+            try:
+                reply = await self._read([(T.PASSWORD_MODE, b"")])
+            except Unreachable:
+                # old firmware stays silent for tags it does not know: no scheme tag, plain
+                reply = Packet(Op.READ_RESPONSE, device_mac=self.mac)
             self.password_mode = mode_from_flags(reply.first(T.PASSWORD_MODE))
         salt = None
         if self.password_mode.needs_salt:
@@ -462,6 +466,8 @@ class SwitchClient:
 
     async def set_mirror(self, destination: int, sources: list[int]) -> None:
         count = await self._port_count()
+        if destination > count:
+            raise ValueError(f"The destination port must be 1 to {count}.")
         if destination and destination in sources:
             raise ValueError("The destination port cannot be a source port.")
         if destination and not sources:

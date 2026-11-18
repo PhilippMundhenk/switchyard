@@ -79,8 +79,12 @@ class Transport:
         targets: list[str] | None = None,
         interfaces: list[str] | None = None,
         log_size: int = 500,
+        timeout: float = 1.5,
+        retries: int = 2,
         enumerate_interfaces: Callable[[], list[Interface]] = list_interfaces,
     ):
+        self.timeout = timeout
+        self.retries = retries
         self.client_port = client_port
         self.device_port = device_port
         self.targets = targets or []
@@ -223,8 +227,8 @@ class Transport:
         device_mac: bytes,
         tlvs: list[tuple[int, bytes]],
         address: str | None = None,
-        timeout: float = 1.5,
-        retries: int = 2,
+        timeout: float | None = None,
+        retries: int | None = None,
     ) -> Packet:
         """Send to one switch and wait for its reply.
 
@@ -232,6 +236,8 @@ class Transport:
         sequence number so a switch that already answered is not asked twice
         under a new identity.
         """
+        timeout = self.timeout if timeout is None else timeout
+        retries = self.retries if retries is None else retries
         seq = self._next_seq()
         future: asyncio.Future[Packet] = asyncio.get_running_loop().create_future()
 

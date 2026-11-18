@@ -226,6 +226,12 @@ class Manager:
         }
 
     async def restore(self, mac: str, backup: dict, include_network: bool = False) -> list[dict]:
+        try:
+            return await self._restore(mac, backup, include_network)
+        except (KeyError, TypeError, AttributeError, IndexError) as exc:
+            raise ValueError(f"The backup file is incomplete or damaged ({exc!r}).") from exc
+
+    async def _restore(self, mac: str, backup: dict, include_network: bool) -> list[dict]:
         if backup.get("format") != BACKUP_FORMAT or backup.get("version") != 1:
             raise ValueError("This file is not a Switchyard backup.")
         client = self.client(mac)
