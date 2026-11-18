@@ -1,12 +1,13 @@
 """Hostile firmware: every setting answered with random bytes of random length."""
 
+import contextlib
 import random
 
 import pytest
 
-from switchyard.nsdp import NsdpError, SwitchClient, Transport, Unreachable, parse_mac
+from switchyard.nsdp import SwitchClient, Transport, Unreachable, parse_mac
 from switchyard.nsdp.packet import Packet, PacketError
-from switchyard.sim import Simulator, SimSwitch
+from switchyard.sim import SimSwitch, Simulator
 
 ALLOWED = (Unreachable,)  # decoding problems must be absorbed, never raised
 
@@ -25,10 +26,8 @@ def test_packet_decoder_only_raises_packet_error():
                 data[rng.randrange(len(data))] = rng.randrange(256)
         if rng.random() < 0.3:
             data = data[: rng.randrange(0, len(data) + 1)]
-        try:
+        with contextlib.suppress(PacketError):
             Packet.decode(bytes(data))
-        except PacketError:
-            pass
 
 
 @pytest.mark.parametrize("seed", range(1, 41))
@@ -49,10 +48,8 @@ async def test_client_survives_garbled_replies(seed):
             c.read_lag,
             c.read_port_admin,
         ):
-            try:
+            with contextlib.suppress(*ALLOWED):
                 await read()
-            except ALLOWED:
-                pass
         try:
             state = await c.read_state()
             assert isinstance(state["ports"], list)
