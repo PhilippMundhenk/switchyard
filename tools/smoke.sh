@@ -33,6 +33,8 @@ curl -fsS -b "$JAR" -X POST "$B/api/discovery/scan" | python3 -c 'import json,sy
 MAC=00:26:f2:aa:10:01
 curl -fsS -b "$JAR" -H 'Content-Type: application/json' -d "{\"mac\":\"$MAC\",\"password\":\"password\"}" "$B/api/devices" >/dev/null
 curl -fsS -b "$JAR" "$B/api/devices/$MAC/state" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["info"]["model"]=="GS108E" and len(d["ports"])==8'
+test "$(curl -s -o /dev/null -w '%{http_code}' "$B/api/devices")" = 401
 curl -fsS "$B/" | grep -q Switchyard
+curl -fsS "$B/favicon.svg" | grep -q "<svg"
 [ "$(docker exec "$NAME" id -u)" != 0 ] || { echo "runs as root"; exit 1; }
 echo "smoke test passed"

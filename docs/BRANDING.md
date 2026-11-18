@@ -31,3 +31,12 @@ link speed; the VLAN matrix uses `U` (untagged), `T` (tagged) and `–` (not a m
 ## Tone
 
 Short sentences, plain words, say what will happen before a destructive action.
+
+## Icon
+
+A railway junction: one track that splits into three, ending in dots. It stands for a switch
+(points) and for ports. White strokes and dots on a rounded square in the accent blue `#2f6fed`,
+64 x 64 viewBox, readable at 16 px. Source: `docs/assets/icon.svg`. `python tools/make_icons.py`
+derives `favicon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `site.webmanifest`
+(web static folder) and `docs/assets/social-preview.png` (1280 x 640, upload it in the repository
+*Settings*, *Social preview*). The web interface shows the same SVG as its brand mark.

@@ -10,6 +10,7 @@ import time
 
 from .config import Config
 from .nsdp import SwitchClient, Transport, discover, parse_mac, probe
+from .nsdp import firmware as fw
 from .nsdp.client import AuthError, PasswordRequired, Unreachable
 from .store import Store
 
@@ -17,6 +18,7 @@ log = logging.getLogger(__name__)
 
 BACKUP_FORMAT = "switchyard-backup"
 ONLINE_GRACE = 150.0
+MAX_FIRMWARE_BYTES = 16 * 1024 * 1024
 
 
 class NotFound(KeyError):
@@ -34,6 +36,11 @@ class Manager:
         self.last_scan: float | None = None
         self._scan_lock = asyncio.Lock()
         self._poller: asyncio.Task | None = None
+        self.upgrades: dict[str, dict] = {}
+        self._upgrade_tasks: set[asyncio.Task] = set()
+        self.upgrade_settle = 2.0  # pause between 'upgrade mode' and the upload
+        self.upgrade_wait = 300.0  # how long to wait for the switch to come back
+        self.upgrade_poll = 3.0
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -44,6 +51,8 @@ class Manager:
             self._poller = asyncio.create_task(self._poll(seconds))
 
     async def stop(self) -> None:
+        for task in list(self._upgrade_tasks):
+            task.cancel()
         if self._poller:
             self._poller.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -222,6 +231,8 @@ class Manager:
                 "mirror": state["mirror"],
                 "igmp": state["igmp"],
                 "loop_detection": state["loop_detection"],
+                "lag": state["lag"],
+                "port_admin": state["port_admin"],
             },
         }
 
@@ -253,6 +264,17 @@ class Manager:
         def ints(table: dict | None) -> dict:
             return {int(k): v for k, v in (table or {}).items()}
 
+        admin = config.get("port_admin")
+        if admin:
+            await step(
+                "Port speed and flow control",
+                client.set_port_admin(
+                    {
+                        int(p): {"speed_code": a["speed_code"], "flow_control": a["flow_control"]}
+                        for p, a in admin.items()
+                    }
+                ),
+            )
         vlan = config.get("vlan")
         if vlan:
             current = await client.read_vlan()
@@ -275,6 +297,9 @@ class Manager:
                     ints(qos["storm_rates"]),
                 ),
             )
+        lag = config.get("lag")
+        if lag:
+            await step("Link aggregation", client.apply_lags(lag["lags"]))
         mirror = config.get("mirror")
         if mirror:
             await step("Mirroring", client.set_mirror(mirror["destination"], mirror["sources"]))
@@ -301,6 +326,86 @@ class Manager:
                 ),
             )
         return steps
+
+    # -- firmware ------------------------------------------------------------
+
+    async def check_firmware(self, mac: str, data: bytes) -> dict:
+        """Look at an image without touching the switch (only its identity is read)."""
+        if len(data) > MAX_FIRMWARE_BYTES:
+            raise fw.FirmwareError("The file is too large to be a firmware image.")
+        image = fw.parse(data)
+        info = await self.client(mac).read_info()
+        return {
+            "image": image.as_dict(),
+            "switch": {"model": info["model"], "firmware": info["firmware"]},
+            "matches": fw.matches_model(image.board, info["model"]),
+            "same_version": image.version == info["firmware"],
+        }
+
+    async def start_upgrade(self, mac: str, data: bytes, force: bool, filename: str) -> dict:
+        if len(data) > MAX_FIRMWARE_BYTES:
+            raise fw.FirmwareError("The file is too large to be a firmware image.")
+        image = fw.parse(data)
+        if self.upgrades.get(mac, {}).get("state") in ("running",):
+            raise ValueError("A firmware upgrade is already running on this switch.")
+        client = self.client(mac)
+        await client.write([])  # fail early on a wrong or missing password
+        info = await client.read_info()
+        if not force and not fw.matches_model(image.board, info["model"]):
+            raise fw.FirmwareError(
+                f"This image is for {image.board or 'another board'}, "
+                f"the switch is a {info['model']}."
+            )
+        status = {
+            "state": "running",
+            "step": "starting",
+            "sent": 0,
+            "total": len(data),
+            "from_version": info["firmware"],
+            "image_version": image.version,
+            "version": None,
+            "error": None,
+            "started": time.time(),
+        }
+        self.upgrades[mac] = status
+        task = asyncio.create_task(self._run_upgrade(mac, client, data, force, filename, status))
+        self._upgrade_tasks.add(task)
+        task.add_done_callback(self._upgrade_tasks.discard)
+        return status
+
+    async def _run_upgrade(self, mac, client, data, force, filename, status) -> None:
+        def progress(step: str, sent: int, total: int) -> None:
+            status.update(step=step, sent=sent, total=total)
+
+        try:
+            await client.upgrade_firmware(data, filename, progress, force, self.upgrade_settle)
+            status.update(step="restarting", sent=status["total"])
+            deadline = time.monotonic() + self.upgrade_wait
+            while time.monotonic() < deadline:
+                await asyncio.sleep(self.upgrade_poll)
+                try:
+                    info = await client.read_info()
+                except Unreachable:
+                    continue
+                status.update(state="done", step="finished", version=info["firmware"])
+                self.seen[mac] = time.time()
+                self._note_seen({**info, "mac": info["mac"]})
+                return
+            status.update(
+                state="failed",
+                error="The switch did not come back after the upgrade. Wait a few minutes, "
+                "then search the network again. Do not power it off while it is flashing.",
+            )
+        except asyncio.CancelledError:
+            status.update(state="failed", error="Cancelled because Switchyard stopped.")
+            raise
+        except Exception as exc:
+            log.warning("firmware upgrade of %s failed: %s", mac, exc)
+            status.update(state="failed", error=str(exc))
+
+    def upgrade_status(self, mac: str) -> dict:
+        self.device(mac)
+        return self.upgrades.get(mac, {"state": "idle"})
 
 
 def _normalise_mac(text: str) -> str:

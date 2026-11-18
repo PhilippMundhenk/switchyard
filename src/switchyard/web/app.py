@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from .. import __version__
 from ..config import Config
-from ..manager import Manager, NotFound
+from ..manager import MAX_FIRMWARE_BYTES, Manager, NotFound
 from ..nsdp import Transport
 from ..nsdp import tags as T
 from ..nsdp.client import AuthError, NsdpError, PasswordRequired, Unreachable
@@ -120,6 +120,25 @@ class IgmpBody(BaseModel):
     validate_v3: bool | None = None
 
 
+class LagGroup(BaseModel):
+    id: int = Field(ge=1, le=16)
+    enabled: bool
+    members: list[int] = []
+
+
+class LagBody(BaseModel):
+    lags: list[LagGroup]
+
+
+class PortSetting(BaseModel):
+    speed_code: int = Field(ge=0, le=15)
+    flow_control: bool = False
+
+
+class PortSettingsBody(BaseModel):
+    ports: dict[int, PortSetting] = Field(min_length=1)
+
+
 class FlagBody(BaseModel):
     enabled: bool
 
@@ -163,9 +182,17 @@ def create_app(config: Config) -> FastAPI:
             targets, client_port = [f"127.0.0.1:{port}"], 0
             log.warning("demo mode: four simulated switches, the network is not used")
         transport = Transport(
-            client_port, config["nsdp.device_port"], targets, config["nsdp.interfaces"]
+            client_port,
+            config["nsdp.device_port"],
+            targets,
+            config["nsdp.interfaces"],
+            tftp_port=config["nsdp.tftp_port"],
         )
+        if simulator:
+            transport.tftp_port = simulator.tftp_port
         manager = Manager(config, transport, Store(config.data_dir / "devices.json"))
+        if simulator:
+            manager.upgrade_settle, manager.upgrade_poll = 0.3, 0.5
         await manager.start()
         app.state.manager = manager
         log.info("NSDP on UDP %s via %s", transport.client_port, [r.name for r in transport.routes])
@@ -350,6 +377,7 @@ def create_app(config: Config) -> FastAPI:
             "vlan_modes": T.VLAN_MODES,
             "priorities": list(T.PRIORITIES.values()),
             "rate_codes": T.RATE_CODES,
+            "admin_speeds": T.ADMIN_SPEEDS,
             "link_codes": {k: v[0] for k, v in T.LINK_CODES.items()},
         }
 
@@ -448,6 +476,18 @@ def create_app(config: Config) -> FastAPI:
         await manager().client(mac).set_qos(**body.model_dump())
         return ok("QoS settings saved.")
 
+    @api.put("/devices/{mac}/lag")
+    async def set_lag(mac: str, body: LagBody):
+        await manager().client(mac).apply_lags([x.model_dump() for x in body.lags])
+        return ok("Link aggregation saved.")
+
+    @api.put("/devices/{mac}/port-settings")
+    async def set_port_settings(mac: str, body: PortSettingsBody):
+        await (
+            manager().client(mac).set_port_admin({p: x.model_dump() for p, x in body.ports.items()})
+        )
+        return ok("Port settings saved.")
+
     @api.put("/devices/{mac}/mirror")
     async def set_mirror(mac: str, body: MirrorBody):
         await manager().client(mac).set_mirror(body.destination, body.sources)
@@ -496,6 +536,33 @@ def create_app(config: Config) -> FastAPI:
         m.clients.pop(mac, None)
         m.store.update(mac, password=None)
         return ok("The switch is back to factory settings. Its password is 'password' again.")
+
+    async def firmware_bytes(request: Request) -> bytes:
+        declared = int(request.headers.get("content-length") or 0)
+        if declared > MAX_FIRMWARE_BYTES:
+            raise ValueError("The file is too large to be a firmware image.")
+        data = await request.body()
+        if not data:
+            raise ValueError("Send the firmware file as the request body.")
+        return data
+
+    @api.post("/devices/{mac}/firmware/check")
+    async def firmware_check(mac: str, request: Request):
+        return await manager().check_firmware(mac, await firmware_bytes(request))
+
+    @api.get("/devices/{mac}/firmware")
+    def firmware_status(mac: str):
+        return manager().upgrade_status(mac)
+
+    @api.post("/devices/{mac}/firmware", status_code=202)
+    async def firmware_upgrade(
+        mac: str, request: Request, confirm: str = "", force: bool = False, filename: str = ""
+    ):
+        if confirm.strip().lower() != mac:
+            raise ValueError("Type the MAC address of the switch to confirm.")
+        data = await firmware_bytes(request)
+        name = re.sub(r"[^A-Za-z0-9._-]", "_", filename)[:60] or "firmware.flash"
+        return await manager().start_upgrade(mac, data, force, name)
 
     @api.get("/devices/{mac}/backup")
     async def backup(mac: str):

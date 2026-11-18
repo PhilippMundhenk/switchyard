@@ -73,9 +73,10 @@ Ports start at 1. A port bitmap has `ceil(ports/8)` bytes, port 1 is the most si
 | `0006`/`0007`/`0008` | IP / netmask / gateway | 4 bytes |
 | `000b` | DHCP | 0 static, 1 DHCP |
 | `000d`/`000e` | firmware slot 1 / 2 | text |
+| `0010` | firmware upgrade mode | write 1, then push the image by TFTP |
 | `0013` | reboot | write 1 |
 | `0400` | factory reset | write 1 |
-| `0c00` | port link | `[port][speed][flow]` |
+| `0c00` | port link (read) / speed setting (write) | read `[port][speed][flow]`; write `[port][setting][flow]` |
 | `1000` | port statistics | `[port]` + 6 x u64: received bytes, sent bytes, then model specific; CRC errors are the 6th (Gigabit models) or 3rd (XS models) |
 | `1400` | clear statistics | write 1 |
 | `1800` | start cable test | `[port][1]` |
@@ -96,7 +97,12 @@ Ports start at 1. A port bitmap has `ceil(ports/8)` bytes, port 1 is the most si
 | `6800` | IGMP snooping | `[enabled u16][vlan u16]` |
 | `6c00`/`7000` | block unknown multicast / validate IGMPv3 | 0 or 1 |
 | `7800` | serial number | 1 byte + text |
+| `8800` | link aggregation | `[group][admin 0/1][members]`, one record per group |
+| `8c00` | number of LAG groups | 1 byte |
 | `9000` | loop detection | 0 or 1 |
+| `9400` | port speed settings (read) | `[port][setting][flow]`; not on every model |
+
+Speed setting codes (tag `0c00` write, `9400` read): 0 auto, 1 disabled, 2 10M half, 3 10M full, 4 100M half, 5 100M full, 6 1G full. These come from the order of the utility's option list and are unverified.
 
 Codes: link 0 down, 1 10M half, 2 10M full, 3 100M half, 4 100M full, 5 1G, 6 10G. Rate code 0 no
 limit, then 512 kbit/s doubling up to 11 = 512 Mbit/s. Cable status 0 ok, 1 no cable, 2 open, 3
@@ -113,7 +119,28 @@ short, 4 fiber, 5 shorted, 7 crosstalk.
 - **Mode changes reset.** Writing the VLAN mode or QoS mode erases the related tables.
 - **Reboot.** The switch stays silent for about half a minute.
 
+## Link aggregation
+
+Static trunks only: the firmware has no LACP. The vendor utility refuses a group with fewer than
+2 or more than 4 members (8 on 10-Gigabit models), and members must share VLAN membership, speed,
+flow control, priority and rate limits and must not be mirrored. Switchyard checks the member count
+and overlaps itself and leaves the rest to the switch, which answers with result code 5.
+
+## Firmware upgrade
+
+1. Check the file: `UMHD` container, body length, 16-bit byte-sum checksum, board name against the
+   switch model (a `GS108Ev3` accepts a `GS108E` image, nothing else without "force").
+2. Authenticate with a no-op write.
+3. Write tag `0x0010` = 1; the switch starts a TFTP server on UDP 69.
+4. After a short pause send the file with a TFTP write request in octet mode (512-byte blocks,
+   retransmit on timeout).
+5. The switch flashes and restarts by itself. Switchyard polls until it answers and reports the
+   version it then announces.
+
+The header layout and the sequence come from public write-ups; the version string decoding
+(`100C` means 1.00.12) is a guess. **Not verified on real hardware.** Interrupting the upload is
+safe only in so far as the switch refuses a short image; interrupting the flashing step is not.
+
 ## Not implemented
 
-Firmware upgrade (TFTP after tag `0x0010`), link aggregation, per-port speed and flow control,
-LED, power saving. See the issue list.
+LACP, LED and power saving options, user names for newer firmware. See the issue list.

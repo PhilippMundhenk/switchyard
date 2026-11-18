@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Switchyard">
+  <rect width="64" height="64" rx="14" fill="#2f6fed"/>
+  <g fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round">
+    <path d="M12 32H26"/>
+    <path d="M26 32H50"/>
+    <path d="M26 32C35 32 38 19 49 19"/>
+    <path d="M26 32C35 32 38 45 49 45"/>
+  </g>
+  <g fill="#fff">
+    <circle cx="12" cy="32" r="4.5"/>
+    <circle cx="52" cy="19" r="4.5"/>
+    <circle cx="52" cy="32" r="4.5"/>
+    <circle cx="52" cy="45" r="4.5"/>
+  </g>
+</svg>

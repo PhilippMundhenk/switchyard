@@ -357,3 +357,185 @@ def test_list_interfaces_runs():
 
     assert isinstance(list_interfaces(), list)
     assert read_mac("does-not-exist") == bytes(6)
+
+
+# ----------------------------------------------------------------- LAG, speed, firmware
+async def test_lag_read_and_set(transport, sim):
+    c = client_for(transport)
+    lag = await c.read_lag()
+    assert (
+        lag["groups"] == 4
+        and lag["max_members"] == 4
+        and not any(x["enabled"] for x in lag["lags"])
+    )
+    await c.set_lag(1, True, [1, 2])
+    await c.set_lag(2, True, [3, 4, 5])
+    got = {x["id"]: x for x in (await c.read_lag())["lags"]}
+    assert got[1] == {"id": 1, "enabled": True, "members": [1, 2]}
+    assert got[2]["members"] == [3, 4, 5]
+    await c.set_lag(1, False, [])
+    assert sim.by_mac(MAC).lags[1] == (False, [])
+
+
+async def test_lag_validation(transport, sim):
+    c = client_for(transport)
+    for group, enabled, members in [(1, True, [1]), (1, True, [1, 2, 3, 4, 5]), (9, True, [1, 2])]:
+        with pytest.raises(ValueError):
+            await c.set_lag(group, enabled, members)
+    await c.set_lag(1, True, [1, 2])
+    with pytest.raises(ValueError, match="already belongs"):
+        await c.set_lag(2, True, [2, 3])
+    # the switch enforces the same speed on all members: the client does not pre-check this
+    await c.set_port_admin({3: {"speed_code": 5, "flow_control": False}})
+    with pytest.raises(NsdpError):
+        await c.set_lag(2, True, [3, 4])
+    c5 = client_for(transport, "e0:91:f5:cc:30:03")
+    assert (await c5.read_lag())["groups"] == 2
+    xs = SimSwitch("02:00:00:00:00:77", model="XS708E")
+    s2 = Simulator([xs])
+    await s2.start()
+    t = Transport(client_port=0, targets=[f"127.0.0.1:{s2.port}"], timeout=0.3, retries=1)
+    await t.start()
+    try:
+        cx = client_for(t, xs.mac)
+        await cx.set_lag(1, True, [1, 2, 3, 4, 5, 6, 7, 8])
+        assert (await cx.read_lag())["max_members"] == 8
+    finally:
+        await t.stop()
+        s2.stop()
+
+
+async def test_lag_unsupported_switch_returns_none(transport):
+    sw = SimSwitch("02:00:00:00:00:0b", unsupported={T.LAG, T.LAG_COUNT})
+    sim = Simulator([sw])
+    await sim.start()
+    t = Transport(client_port=0, targets=[f"127.0.0.1:{sim.port}"], timeout=0.3, retries=1)
+    await t.start()
+    try:
+        c = client_for(t, sw.mac)
+        assert await c.read_lag() is None
+        with pytest.raises(ValueError, match="does not support"):
+            await c.set_lag(1, True, [1, 2])
+    finally:
+        await t.stop()
+        sim.stop()
+
+
+async def test_apply_lags_changes_only_what_differs(transport, sim):
+    c = client_for(transport)
+    await c.set_lag(1, True, [1, 2])
+    await c.apply_lags(
+        [
+            {"id": 1, "enabled": True, "members": [1, 2, 3]},
+            {"id": 2, "enabled": True, "members": [5, 6]},
+        ]
+    )
+    lags = {x["id"]: x["members"] for x in (await c.read_lag())["lags"] if x["enabled"]}
+    assert lags == {1: [1, 2, 3], 2: [5, 6]}
+    await c.apply_lags([])
+    assert not any(x["enabled"] for x in (await c.read_lag())["lags"])
+
+
+async def test_port_admin_speed_and_flow(transport, sim):
+    c = client_for(transport)
+    admin = await c.read_port_admin()
+    assert admin[1] == {"port": 1, "speed_code": 0, "speed": "auto", "flow_control": False}
+    await c.set_port_admin(
+        {1: {"speed_code": 5, "flow_control": True}, 2: {"speed_code": 1, "flow_control": False}}
+    )
+    admin = await c.read_port_admin()
+    assert admin[1]["speed"] == "100M full" and admin[1]["flow_control"] is True
+    assert admin[2]["speed"] == "disabled"
+    ports = {p["port"]: p for p in await c.read_ports()}
+    assert ports[1]["speed_mbps"] == 100 and ports[2]["up"] is False  # settings take effect
+    for bad in ({9: {"speed_code": 0}}, {1: {"speed_code": 42}}):
+        with pytest.raises(ValueError):
+            await c.set_port_admin(bad)
+    await c.set_lag(1, True, [3, 4])
+    with pytest.raises(NsdpError):
+        await c.set_port_admin({3: {"speed_code": 1}})  # cannot disable a LAG member
+    gs105 = client_for(transport, "e0:91:f5:cc:30:03")
+    assert await gs105.read_port_admin() is None  # not supported on this model
+
+
+def make_image(board="GS108E", version="100C", size=5000):
+    from switchyard.nsdp.firmware import build_image
+
+    return build_image(board, version, bytes(i % 251 for i in range(size)))
+
+
+def test_firmware_image_checks():
+    from switchyard.nsdp import firmware as fw
+
+    img = make_image()
+    parsed = fw.parse(img)
+    assert (parsed.board, parsed.version, parsed.version_raw) == ("GS108E", "1.00.12", "100C")
+    assert fw.matches_model("GS108E", "GS108Ev3") and not fw.matches_model("GS105E", "GS108E")
+    assert not fw.matches_model("", "GS108E")
+    bad = {
+        "small": img[:100],
+        "magic": b"XXXX" + img[4:],
+        "length": img[:-10],
+        "checksum": img[:-1] + bytes([img[-1] ^ 1]),
+        "header": img[:4] + b"ZZZZZZZZ" + img[12:],
+    }
+    for data in bad.values():
+        with pytest.raises(fw.FirmwareError):
+            fw.parse(data)
+    assert fw.guess_version("zz") == "zz"
+
+
+async def test_firmware_upgrade_end_to_end(transport, sim):
+    sw = sim.by_mac(MAC)
+    sw.tftp_drop_blocks = {3}  # a lost ACK must be survived by retransmission
+    transport.tftp_port = sim.tftp_port
+    transport.tftp_timeout = 0.3
+    c = client_for(transport)
+    seen = []
+    info = await c.upgrade_firmware(
+        make_image(version="100D"),
+        progress=lambda step, a, b: seen.append((step, a, b)),
+        settle=0.05,
+    )
+    assert info.version == "1.00.13"
+    assert sw.firmware == "1.00.13" and sw.upgrades == 1 and not sw.upgrade_mode
+    assert seen[0][0] == "entering upgrade mode" and seen[-1][1] == seen[-1][2]
+    await asyncio.sleep(0.5)  # reboot
+    assert (await c.read_info())["firmware"] == "1.00.13"
+
+
+async def test_firmware_upgrade_refusals(transport, sim):
+    from switchyard.nsdp import firmware as fw
+
+    transport.tftp_port = sim.tftp_port
+    transport.tftp_timeout = 0.3
+    c = client_for(transport)
+    with pytest.raises(fw.FirmwareError, match="for GS105E"):
+        await c.upgrade_firmware(make_image(board="GS105E"), settle=0.01)
+    assert not sim.by_mac(MAC).upgrade_mode  # nothing was switched
+    with pytest.raises(fw.FirmwareError):
+        await c.upgrade_firmware(b"garbage" * 1000, settle=0.01)
+    bad_password = client_for(transport, password="wrong")
+    with pytest.raises(AuthError):
+        await bad_password.upgrade_firmware(make_image(), settle=0.01)
+    assert not sim.by_mac(MAC).upgrade_mode
+    # forced wrong board: the switch itself refuses it at the end and keeps its firmware
+    before = sim.by_mac(MAC).firmware
+    with pytest.raises(NsdpError, match="Firmware upload failed"):
+        await c.upgrade_firmware(make_image(board="GS105E"), force=True, settle=0.01)
+    assert sim.by_mac(MAC).firmware == before
+
+
+async def test_firmware_upload_fails_cleanly_when_tftp_is_down(transport, sim):
+    transport.tftp_port = 9  # nobody listens
+    transport.tftp_timeout = 0.05
+    c = client_for(transport)
+    with pytest.raises(NsdpError, match="stopped answering"):
+        await c.upgrade_firmware(make_image(), settle=0.01)
+
+
+def test_tftp_target_needs_an_address():
+    t = Transport(client_port=0)
+    assert t.tftp_target("192.168.0.9") == ("192.168.0.9", 69)
+    with pytest.raises(ValueError):
+        t.tftp_target(None)

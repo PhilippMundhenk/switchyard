@@ -21,6 +21,7 @@ PASSWORD = 0x000A
 DHCP = 0x000B
 FIRMWARE = 0x000D
 FIRMWARE2 = 0x000E
+FIRMWARE_UPGRADE = 0x0010
 REBOOT = 0x0013
 PASSWORD_MODE = 0x0014
 PASSWORD_SALT = 0x0017
@@ -49,7 +50,10 @@ IGMP = 0x6800
 IGMP_BLOCK_UNKNOWN = 0x6C00
 IGMP_VALIDATE_V3 = 0x7000
 SERIAL = 0x7800
+LAG = 0x8800
+LAG_COUNT = 0x8C00
 LOOP_DETECTION = 0x9000
+PORT_ADMIN = 0x9400
 
 NAMES = {
     value: name.lower()
@@ -84,6 +88,16 @@ RATE_CODES = {
     9: 131072,
     10: 262144,
     11: 524288,
+}
+# admin speed setting code -> label (written to tag 0x0c00, read from 0x9400)
+ADMIN_SPEEDS = {
+    0: "auto",
+    1: "disabled",
+    2: "10M half",
+    3: "10M full",
+    4: "100M half",
+    5: "100M full",
+    6: "1G full",
 }
 CABLE_STATUS = {
     0: "ok",
@@ -260,3 +274,33 @@ def cable_result(value: bytes) -> dict:
 
 def pack_cable_result(port: int, status: int, distance: int) -> bytes:
     return struct.pack(">BII", port, status, distance)
+
+
+def lag(value: bytes, ports: int) -> dict:
+    """``[id][admin 0/1][member bitmap]``."""
+    return {
+        "id": value[0],
+        "enabled": value[1] == 1,
+        "members": ports_from_bitmap(value[2:], ports),
+    }
+
+
+def pack_lag(group: int, enabled: bool, members: list[int], ports: int) -> bytes:
+    return bytes([group, 1 if enabled else 0]) + bitmap_from_ports(members, ports)
+
+
+def port_admin(value: bytes) -> dict:
+    """``[port][speed setting][flow control]``."""
+    code = value[1]
+    return {
+        "port": value[0],
+        "speed_code": code,
+        "speed": ADMIN_SPEEDS.get(code, f"code {code}"),
+        "flow_control": bool(value[2]) if len(value) > 2 else False,
+    }
+
+
+def pack_port_admin(port: int, speed_code: int, flow_control: bool) -> bytes:
+    if speed_code not in ADMIN_SPEEDS:
+        raise ValueError(f"unknown speed setting {speed_code}")
+    return bytes([port, speed_code, 1 if flow_control else 0])

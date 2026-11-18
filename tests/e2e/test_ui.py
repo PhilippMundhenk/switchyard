@@ -312,3 +312,75 @@ def test_phone_layout_has_no_horizontal_scroll(app):
     app.reload()
     expect(app.get_by_test_id("switch-card")).to_be_visible()
     assert app.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+
+
+def test_port_speed_and_flow_control(app):
+    add_switch(app, MAC, "password")
+    open_tab(app, "ports-config")
+    app.get_by_test_id("speed-3").select_option("5")  # 100M full
+    app.get_by_test_id("flow-3").check()
+    app.get_by_test_id("port-settings-save").click()
+    expect(app.locator(".toast").last).to_contain_text("Port settings saved")
+    admin = api(app, "GET", f"/devices/{MAC}/state").json()["port_admin"]
+    assert admin["3"]["speed"] == "100M full" and admin["3"]["flow_control"] is True
+    app.get_by_test_id("speed-4").select_option("1")  # disabled: asks first
+    app.get_by_test_id("port-settings-save").click()
+    expect(app.get_by_test_id("modal")).to_contain_text("switched off")
+    app.get_by_role("button", name="Cancel").click()
+    assert api(app, "GET", f"/devices/{MAC}/state").json()["port_admin"]["4"]["speed"] == "auto"
+
+
+def test_link_aggregation_editor(app):
+    add_switch(app, MAC, "password")
+    open_tab(app, "lag")
+    app.get_by_test_id("lag-on-1").check()
+    app.get_by_test_id("lag-cell-1-1").click()
+    expect(app.get_by_test_id("lag-errors")).to_contain_text("at least 2 member ports")
+    expect(app.get_by_test_id("lag-save")).to_be_disabled()
+    app.get_by_test_id("lag-cell-1-2").click()
+    expect(app.get_by_test_id("lag-errors")).to_have_text("")
+    app.get_by_test_id("lag-on-2").check()
+    app.get_by_test_id("lag-cell-2-2").click()
+    app.get_by_test_id("lag-cell-2-3").click()
+    expect(app.get_by_test_id("lag-errors")).to_contain_text("Port 2 is in LAG 1 and LAG 2")
+    app.get_by_test_id("lag-cell-2-2").click()
+    app.get_by_test_id("lag-cell-2-4").click()
+    expect(app.get_by_test_id("lag-save")).to_be_enabled()
+    app.get_by_test_id("lag-save").click()
+    expect(app.locator(".toast").last).to_contain_text("Link aggregation saved")
+    lags = {x["id"]: x for x in api(app, "GET", f"/devices/{MAC}/state").json()["lag"]["lags"]}
+    assert lags[1]["members"] == [1, 2] and lags[2]["members"] == [3, 4] and lags[2]["enabled"]
+
+
+def test_firmware_upgrade_end_to_end(app, tmp_path):
+    from switchyard.nsdp.firmware import build_image
+
+    add_switch(app, MAC, "password")
+    good = tmp_path / "GS108E-V1.00.13.flash"
+    good.write_bytes(build_image("GS108E", "100D", bytes(i % 251 for i in range(8000))))
+    wrong = tmp_path / "GS105E.flash"
+    wrong.write_bytes(build_image("GS105E", "100D", bytes(i % 251 for i in range(8000))))
+    broken = tmp_path / "broken.flash"
+    broken.write_bytes(b"not firmware" * 400)
+    open_tab(app, "firmware")
+    expect(app.locator("body")).to_contain_text("can make a switch unusable")
+    app.get_by_test_id("fw-file").set_input_files(str(broken))
+    expect(app.get_by_test_id("fw-check")).to_contain_text("not a NETGEAR firmware image")
+    expect(app.get_by_test_id("fw-start")).to_be_disabled()
+    app.get_by_test_id("fw-file").set_input_files(str(wrong))
+    expect(app.get_by_test_id("fw-check")).to_contain_text("Flashing it can ruin the switch")
+    expect(app.get_by_test_id("fw-start")).to_be_disabled()
+    app.get_by_test_id("fw-file").set_input_files(str(good))
+    expect(app.get_by_test_id("fw-check")).to_contain_text("1.00.13")
+    expect(app.get_by_test_id("fw-start")).to_be_enabled()
+    app.get_by_test_id("fw-start").click()
+    app.get_by_test_id("confirm-input").fill("nope")
+    app.get_by_test_id("confirm-ok").click()
+    expect(app.get_by_test_id("confirm-input")).to_have_attribute("aria-invalid", "true")
+    app.get_by_test_id("confirm-input").fill(MAC)
+    app.get_by_test_id("confirm-ok").click()
+    expect(app.get_by_test_id("fw-state")).to_be_visible()
+    app.set_default_timeout(40000)
+    expect(app.get_by_test_id("fw-state")).to_have_attribute("data-state", "done")
+    expect(app.get_by_test_id("fw-state")).to_contain_text("1.00.13")
+    assert api(app, "GET", f"/devices/{MAC}/state").json()["info"]["firmware"] == "1.00.13"

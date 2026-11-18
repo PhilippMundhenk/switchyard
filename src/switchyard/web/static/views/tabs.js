@@ -1,5 +1,5 @@
 // The sections of the switch detail page.
-import { del, dev, get, patch, post, put } from '../api.js';
+import { ApiError, del, dev, get, patch, post, put } from '../api.js';
 import { clear, download, fmtBytes, fmtLimit, fmtRate, h, portList, validateDot1q, validateNetwork } from '../util.js';
 import { confirmDialog, field, modal, run, section, select, showError, toast, unsupported, withSwitchAuth } from '../ui.js';
 
@@ -347,6 +347,163 @@ async function cable(host, S) {
     h('div', { class: 'checks' }, ...allPorts.map((p, i) => h('label', {}, boxes[i], `Port ${p}`))), h('p', {}, run_), results));
 }
 
+
+// ------------------------------------------------------------- port settings
+async function portSettings(host, S) {
+  const admin = S.state.port_admin;
+  if (!admin) return host.append(section('Port settings', unsupported('Speed and flow control settings')));
+  const apply = applier(S);
+  const speeds = Object.entries(S.state.admin_speeds).map(([code, label]) => [code, label[0].toUpperCase() + label.slice(1)]);
+  const live = Object.fromEntries(S.state.ports.map((p) => [p.port, p]));
+  const speedSel = {};
+  const flow = {};
+  const rows = Object.keys(admin).map(Number).sort((a, b) => a - b).map((p) => {
+    speedSel[p] = select(speeds, admin[p].speed_code, { 'aria-label': `Speed of port ${p}`, 'data-testid': `speed-${p}` });
+    flow[p] = h('input', { type: 'checkbox', checked: admin[p].flow_control, 'aria-label': `Flow control of port ${p}`, 'data-testid': `flow-${p}` });
+    return h('tr', {}, h('td', {}, String(p)), h('td', {}, live[p] ? live[p].link : '–'), h('td', {}, speedSel[p]), h('td', {}, flow[p]));
+  });
+  const save = h('button', { class: 'btn primary', 'data-testid': 'port-settings-save' }, 'Apply');
+  save.addEventListener('click', async () => {
+    const changed = {};
+    for (const p of Object.keys(admin).map(Number)) {
+      const code = Number(speedSel[p].value);
+      if (code !== admin[p].speed_code || flow[p].checked !== admin[p].flow_control) changed[p] = { speed_code: code, flow_control: flow[p].checked };
+    }
+    if (!Object.keys(changed).length) return toast('Nothing changed.');
+    const off = Object.keys(changed).filter((p) => changed[p].speed_code === 1);
+    if (off.length && !(await confirmDialog({ title: 'Turn ports off', message: `Port ${off.join(', ')} will be switched off. If this server reaches the switch through such a port, you lose the connection.`, confirmLabel: 'Apply', danger: true }))) return;
+    await apply(save, () => put(`${dev(S.mac)}/port-settings`, { ports: changed }), 'Port settings saved.');
+  });
+  host.append(section('Port speed and flow control',
+    h('p', { class: 'muted' }, 'Auto negotiates. Fixed speeds need the same setting on the device at the other end. Members of a link aggregation group must share one setting.'),
+    h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ...['Port', 'Link now', 'Speed setting', 'Flow control'].map((t) => h('th', {}, t)))), h('tbody', {}, rows))),
+    h('p', {}, save)));
+}
+
+// ----------------------------------------------------------------------- lag
+async function lagTab(host, S) {
+  const lag = S.state.lag;
+  if (!lag) return host.append(section('Link aggregation', unsupported('Link aggregation')));
+  const apply = applier(S);
+  const n = S.state.info.ports;
+  const allPorts = Array.from({ length: n }, (_, i) => i + 1);
+  let model = lag.lags.map((g) => ({ id: g.id, enabled: g.enabled, members: new Set(g.members) }));
+  const snapshot = (m) => JSON.stringify(m.map((g) => [g.id, g.enabled, [...g.members].sort((a, b) => a - b)]));
+  const original = snapshot(model);
+  const box = h('div', { 'data-testid': 'lag-matrix', class: 'table-wrap' });
+  const errBox = h('div', { class: 'error', role: 'alert', 'data-testid': 'lag-errors' });
+  const dirtyNote = h('span', { class: 'dirty', hidden: true }, 'Unsaved changes');
+  const save = h('button', { class: 'btn primary', 'data-testid': 'lag-save' }, 'Apply');
+  const discard = h('button', { class: 'btn', 'data-testid': 'lag-discard' }, 'Discard changes');
+  const validate = () => {
+    const errors = [];
+    const used = new Map();
+    for (const g of model.filter((x) => x.enabled)) {
+      if (g.members.size < 2) errors.push(`LAG ${g.id} needs at least 2 member ports.`);
+      if (g.members.size > lag.max_members) errors.push(`LAG ${g.id} has at most ${lag.max_members} member ports.`);
+      for (const p of g.members) {
+        if (used.has(p)) errors.push(`Port ${p} is in LAG ${used.get(p)} and LAG ${g.id}.`);
+        used.set(p, g.id);
+      }
+    }
+    return errors;
+  };
+  const draw = () => {
+    const errors = validate();
+    const dirty = snapshot(model) !== original;
+    dirtyNote.hidden = !dirty;
+    save.disabled = !dirty || errors.length > 0;
+    S.ctx.setDirty(() => dirty);
+    clear(errBox).append(...errors.map((e) => h('div', {}, e)));
+    clear(box).append(h('table', { class: 'matrix' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'LAG'), h('th', {}, 'Active'), ...allPorts.map((p) => h('th', {}, String(p))))),
+      h('tbody', {}, ...model.map((g) => h('tr', { 'data-testid': `lag-row-${g.id}` },
+        h('td', {}, `LAG ${g.id}`),
+        h('td', {}, h('input', { type: 'checkbox', checked: g.enabled, 'aria-label': `LAG ${g.id} active`, 'data-testid': `lag-on-${g.id}`, onchange: (e) => { g.enabled = e.target.checked; draw(); } })),
+        ...allPorts.map((p) => h('td', {}, h('button', { class: `cell ${g.members.has(p) ? 'M' : ''}`, disabled: !g.enabled, 'aria-pressed': String(g.members.has(p)), 'aria-label': `LAG ${g.id}, port ${p}`, 'data-testid': `lag-cell-${g.id}-${p}`,
+          onclick: () => { if (g.members.has(p)) g.members.delete(p); else g.members.add(p); draw(); } }, g.members.has(p) ? '✓' : '–'))))))));
+  };
+  save.addEventListener('click', () => apply(save, () => put(`${dev(S.mac)}/lag`, { lags: model.map((g) => ({ id: g.id, enabled: g.enabled, members: g.enabled ? [...g.members].sort((a, b) => a - b) : [] })) }), 'Link aggregation saved.'));
+  discard.addEventListener('click', () => { model = lag.lags.map((g) => ({ id: g.id, enabled: g.enabled, members: new Set(g.members) })); draw(); });
+  draw();
+  host.append(section('Link aggregation (LAG)',
+    h('p', { class: 'muted' }, `Static trunks that bundle ports into one link. Up to ${lag.groups} groups with at most ${lag.max_members} ports each. This is static aggregation: the device at the other end must be set up the same way (LACP is not supported by these switches).`),
+    box, errBox, h('div', { class: 'row' }, save, discard, dirtyNote)),
+    h('div', { class: 'notice' }, 'Ports in one group need the same speed, flow control, PVID and VLAN membership, and cannot take part in port mirroring. The switch refuses the change otherwise and says why.'));
+}
+
+// ------------------------------------------------------------------ firmware
+async function firmware(host, S) {
+  const apply = applier(S);
+  const info = S.state.info;
+  const file = h('input', { type: 'file', accept: '.flash,.bin,.img', 'aria-label': 'Firmware file', 'data-testid': 'fw-file' });
+  const result = h('div', { 'data-testid': 'fw-check' });
+  const progress = h('div', { 'data-testid': 'fw-progress' });
+  const force = h('input', { type: 'checkbox', 'data-testid': 'fw-force' });
+  const go = h('button', { class: 'btn danger', 'data-testid': 'fw-start', disabled: true }, 'Upgrade firmware');
+  let checked = null;
+  let timer = null;
+  S.ctx.onCleanup(() => clearInterval(timer));
+
+  const showStatus = (st) => {
+    clear(progress);
+    if (st.state === 'idle') return;
+    const pct = st.total ? Math.round((st.sent / st.total) * 100) : 0;
+    const label = { running: st.step, done: `Done. The switch now runs ${st.version}.`, failed: `Failed: ${st.error}` }[st.state];
+    progress.append(h('div', { class: `notice ${st.state === 'failed' ? 'danger' : ''}`, 'data-testid': 'fw-state', 'data-state': st.state },
+      h('b', {}, st.state === 'running' ? 'Upgrade running. Do not power off the switch or unplug it. ' : ''), label,
+      st.state === 'running' && st.step === 'uploading' ? h('progress', { max: '100', value: String(pct), 'aria-label': 'Upload progress', style: null }, `${pct} %`) : null,
+      st.state === 'running' && st.step === 'uploading' ? ` ${pct} %` : null));
+  };
+  const poll = async () => {
+    try {
+      const st = await get(`${dev(S.mac)}/firmware`);
+      showStatus(st);
+      if (st.state !== 'running') { clearInterval(timer); timer = null; go.disabled = !checked; if (st.state === 'done') { await S.reload().catch(() => {}); S.retitle(); } }
+    } catch (err) { /* the switch restarts: ignore until it answers again */ }
+  };
+  const watch = () => { if (!timer) timer = setInterval(poll, 1500); };
+  get(`${dev(S.mac)}/firmware`).then((st) => { showStatus(st); if (st.state === 'running') { go.disabled = true; watch(); } }).catch(() => {});
+
+  file.addEventListener('change', async () => {
+    checked = null; go.disabled = true; clear(result);
+    const f = file.files && file.files[0];
+    if (!f) return;
+    try {
+      const buf = await f.arrayBuffer();
+      const r = await fetch(`/api${dev(S.mac)}/firmware/check`, { method: 'POST', credentials: 'same-origin', body: buf });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.message || 'The file was refused.');
+      checked = { buf, name: f.name, info: body };
+      const im = body.image;
+      result.append(h('dl', { class: 'kv' },
+        h('dt', {}, 'Image for'), h('dd', {}, im.board || '?'), h('dt', {}, 'Image version'), h('dd', {}, `${im.version} (${im.version_raw})`),
+        h('dt', {}, 'Switch'), h('dd', {}, `${body.switch.model}, now ${body.switch.firmware}`), h('dt', {}, 'Size'), h('dd', {}, fmtBytes(im.size)), h('dt', {}, 'Checksum'), h('dd', {}, 'valid')));
+      if (!body.matches) result.append(h('div', { class: 'notice danger' }, `This image is for ${im.board}, not for a ${body.switch.model}. Flashing it can ruin the switch.`));
+      else if (body.same_version) result.append(h('div', { class: 'notice' }, 'The switch already runs this version.'));
+      go.disabled = !body.matches && !force.checked;
+    } catch (err) { result.append(h('p', { class: 'error' }, err.message)); }
+  });
+  force.addEventListener('change', () => { go.disabled = !checked || (!checked.info.matches && !force.checked); });
+  go.addEventListener('click', async () => {
+    if (!checked) return;
+    const typed = await confirmDialog({ title: 'Upgrade firmware', message: 'The switch restarts and is offline for a few minutes. A power loss or a wrong image during flashing can make it unusable. Back up the configuration first. Continue only if the switch has stable power.', confirmLabel: 'Start upgrade', danger: true, typeToConfirm: S.mac });
+    if (!typed) return;
+    await run(go, () => withSwitchAuth(S.mac, S.name, async () => {
+      const q = new URLSearchParams({ confirm: typed.toLowerCase(), force: String(force.checked), filename: checked.name });
+      const r = await fetch(`/api${dev(S.mac)}/firmware?${q}`, { method: 'POST', credentials: 'same-origin', body: checked.buf });
+      const body = await r.json();
+      if (!r.ok) throw new ApiError(r.status, body);
+      showStatus(body); watch();
+    }));
+  });
+  host.append(
+    section('Firmware', h('dl', { class: 'kv' }, h('dt', {}, 'Model'), h('dd', {}, info.model), h('dt', {}, 'Running'), h('dd', {}, info.firmware || '–'), info.firmware2 ? h('dt', {}, 'Second image') : null, info.firmware2 ? h('dd', {}, info.firmware2) : null)),
+    section('Upgrade', h('div', { class: 'notice danger' }, 'A firmware upgrade can make a switch unusable if it is interrupted or if the image is wrong. Use only the official image for your exact model and hardware revision. Make a backup first.'),
+      field('Firmware file (.flash)', file), result,
+      h('label', { class: 'check' }, force, ' Allow an image whose board name does not match (dangerous)'), h('p', {}, go), progress));
+}
+
 // -------------------------------------------------------------- maintenance
 async function maintenance(host, S) {
   const apply = applier(S);
@@ -426,6 +583,9 @@ export const TABS = [
   { id: 'vlan', label: 'VLAN', render: vlan },
   { id: 'qos', label: 'QoS', render: qos },
   { id: 'features', label: 'Mirroring & multicast', render: features },
+  { id: 'ports-config', label: 'Speed & flow', render: portSettings },
+  { id: 'lag', label: 'Link aggregation', render: lagTab },
   { id: 'cable', label: 'Cable test', render: cable },
+  { id: 'firmware', label: 'Firmware', render: firmware },
   { id: 'maintenance', label: 'Maintenance', render: maintenance },
 ];

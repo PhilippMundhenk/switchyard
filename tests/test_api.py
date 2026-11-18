@@ -77,7 +77,7 @@ def test_security_headers(client):
 
 
 def test_generated_first_start_password(tmp_path, sim, caplog):
-    env = make_env(sim.port)
+    env = make_env(sim.port, sim.tftp_port)
     del env["SWITCHYARD_AUTH_PASSWORD"]
     with (
         caplog.at_level(logging.WARNING),
@@ -108,7 +108,7 @@ def test_auth_disabled(tmp_path, sim):
 
 
 def test_app_password_change(tmp_path, sim):
-    env = make_env(sim.port)
+    env = make_env(sim.port, sim.tftp_port)
     del env["SWITCHYARD_AUTH_PASSWORD"]
     with TestClient(create_app(cfg.load(tmp_path, env=env))) as c:
         first = c.app.state.auth.generated
@@ -456,3 +456,148 @@ def test_restore_without_password_asks_for_it_instead_of_failing_a_step(client):
     client.patch(D, json={"forget_password": True})
     r = client.post(f"{D}/restore", json={"backup": data})
     assert r.status_code == 409 and r.json()["code"] == "password_required"
+
+
+def test_lag_and_port_settings(client, office):
+    state = client.get(f"{D}/state").json()
+    assert state["lag"]["groups"] == 4 and state["port_admin"]["1"]["speed"] == "auto"
+    assert state["admin_speeds"]["6"] == "1G full"
+    r = client.put(f"{D}/lag", json={"lags": [{"id": 1, "enabled": True, "members": [1, 2]}]})
+    assert r.status_code == 200
+    assert client.get(f"{D}/state").json()["lag"]["lags"][0]["members"] == [1, 2]
+    bad = client.put(f"{D}/lag", json={"lags": [{"id": 2, "enabled": True, "members": [3]}]})
+    assert bad.status_code == 422
+    r = client.put(
+        f"{D}/port-settings", json={"ports": {"5": {"speed_code": 3, "flow_control": True}}}
+    )
+    assert r.status_code == 200
+    port5 = client.get(f"{D}/state").json()["port_admin"]["5"]
+    assert port5["speed"] == "10M full" and port5["flow_control"] is True
+    assert (
+        client.put(f"{D}/port-settings", json={"ports": {"99": {"speed_code": 0}}}).status_code
+        == 422
+    )
+    assert client.put(f"{D}/port-settings", json={"ports": {}}).status_code == 422
+    assert (
+        client.put(f"{D}/port-settings", json={"ports": {"1": {"speed_code": 99}}}).status_code
+        == 422
+    )
+
+
+def test_backup_restore_includes_lag_and_speed(client, office):
+    client.put(
+        f"{D}/port-settings", json={"ports": {"1": {"speed_code": 5}, "2": {"speed_code": 5}}}
+    )
+    client.put(f"{D}/lag", json={"lags": [{"id": 1, "enabled": True, "members": [1, 2]}]})
+    data = client.get(f"{D}/backup").json()
+    assert data["config"]["lag"]["lags"][0]["members"] == [1, 2]
+    client.put(f"{D}/lag", json={"lags": []})
+    client.put(
+        f"{D}/port-settings", json={"ports": {"1": {"speed_code": 0}, "2": {"speed_code": 0}}}
+    )
+    r = client.post(f"{D}/restore", json={"backup": data})
+    assert r.json()["ok"], r.json()
+    after = client.get(f"{D}/state").json()
+    assert after["lag"]["lags"][0]["enabled"] and after["port_admin"]["1"]["speed"] == "100M full"
+
+
+def _image(board="GS108E", version="100D"):
+    from switchyard.nsdp.firmware import build_image
+
+    return build_image(board, version, bytes(i % 251 for i in range(6000)))
+
+
+def _wait_upgrade(client, state="done", seconds=20):
+    import time
+
+    end = time.time() + seconds
+    while time.time() < end:
+        s = client.get(f"{D}/firmware").json()
+        if s["state"] == state or (state == "done" and s["state"] == "failed"):
+            return s
+        time.sleep(0.2)
+    raise AssertionError(s)
+
+
+def test_firmware_check_and_upgrade_flow(client, office):
+    manager = client.app_.state.manager
+    manager.upgrade_settle, manager.upgrade_poll = 0.05, 0.2
+    manager.transport.tftp_timeout = 0.3
+    assert client.get(f"{D}/firmware").json() == {"state": "idle"}
+    image = _image()
+    chk = client.post(f"{D}/firmware/check", content=image).json()
+    assert chk["matches"] is True and chk["image"]["version"] == "1.00.13"
+    assert chk["switch"]["model"] == "GS108E" and chk["same_version"] is False
+    other = client.post(f"{D}/firmware/check", content=_image(board="GS105E")).json()
+    assert other["matches"] is False
+    # refusals
+    assert client.post(f"{D}/firmware", content=image).status_code == 422  # no confirmation
+    assert client.post(f"{D}/firmware?confirm=wrong", content=image).status_code == 422
+    assert client.post(f"{D}/firmware?confirm={MAC}", content=b"").status_code == 422
+    assert client.post(f"{D}/firmware?confirm={MAC}", content=b"junk" * 500).status_code == 422
+    r = client.post(f"{D}/firmware?confirm={MAC}", content=_image(board="GS105E"))
+    assert r.status_code == 422 and "GS105E" in r.json()["message"]
+    assert client.sim.switches[0].upgrades == 0 and not client.sim.switches[0].upgrade_mode
+    # the real thing
+    r = client.post(
+        f"{D}/firmware?confirm={MAC.upper()}&filename=../../etc/x y.flash", content=image
+    )
+    assert r.status_code == 202 and r.json()["state"] == "running"
+    status = _wait_upgrade(client)
+    assert status["state"] == "done", status
+    assert status["version"] == "1.00.13" and status["from_version"] == "1.00.12"
+    assert client.sim.switches[0].firmware == "1.00.13"
+    assert client.get(f"{D}").json()["info"]["firmware"] == "1.00.13"
+
+
+def test_firmware_upgrade_needs_the_switch_password(client):
+    client.post("/api/discovery/scan")
+    client.post("/api/devices", json={"mac": MAC})
+    r = client.post(f"{D}/firmware?confirm={MAC}", content=_image())
+    assert r.status_code == 409 and r.json()["code"] == "password_required"
+    client.post(f"{D}/login", json={"password": "wrong"})
+    r = client.post(f"{D}/firmware?confirm={MAC}", content=_image())
+    assert r.status_code == 409
+    assert client.sim.switches[0].upgrades == 0
+
+
+def test_firmware_failure_is_reported(client, office):
+    manager = client.app_.state.manager
+    manager.upgrade_settle = 0.05
+    manager.transport.tftp_port = 9
+    manager.transport.tftp_timeout = 0.05
+    assert client.post(f"{D}/firmware?confirm={MAC}", content=_image()).status_code == 202
+    status = _wait_upgrade(client)
+    assert status["state"] == "failed" and "stopped answering" in status["error"]
+
+
+def test_firmware_second_upgrade_is_refused_while_running(client, office):
+    manager = client.app_.state.manager
+    manager.upgrade_settle = 1.0
+    assert client.post(f"{D}/firmware?confirm={MAC}", content=_image()).status_code == 202
+    again = client.post(f"{D}/firmware?confirm={MAC}", content=_image())
+    assert again.status_code == 422 and "already running" in again.json()["message"]
+
+
+def test_firmware_never_comes_back(client, office):
+    manager = client.app_.state.manager
+    manager.upgrade_settle, manager.upgrade_poll, manager.upgrade_wait = 0.05, 0.1, 0.5
+    manager.transport.tftp_timeout, manager.transport.timeout, manager.transport.retries = (
+        0.3,
+        0.1,
+        0,
+    )
+    client.sim.switches[0].reboot_seconds = 30
+    client.post(f"{D}/firmware?confirm={MAC}", content=_image())
+    status = _wait_upgrade(client)
+    assert status["state"] == "failed" and "did not come back" in status["error"]
+
+
+def test_firmware_too_large(client, office):
+    from switchyard import manager as mgr
+
+    assert client.post(
+        f"{D}/firmware/check",
+        content=b"x" * 10,
+        headers={"content-length": str(mgr.MAX_FIRMWARE_BYTES + 1)},
+    ).status_code in (413, 422, 400)

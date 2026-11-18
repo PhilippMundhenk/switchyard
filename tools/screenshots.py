@@ -115,6 +115,7 @@ def seed(page, base: str) -> None:
         },
     )
     call("PUT", f"{base_dev}/mirror", {"destination": 8, "sources": [1, 2]})
+    call("PUT", f"{base_dev}/lag", {"lags": [{"id": 1, "enabled": True, "members": [5, 6]}]})
 
 
 def main() -> int:
@@ -152,6 +153,8 @@ def main() -> int:
                 shot("overview.png", f"{base}/overview", "port-panel")
                 shot("vlan.png", f"{base}/vlan", "vlan-matrix")
                 shot("qos.png", f"{base}/qos", "qos-save")
+                shot("lag.png", f"{base}/lag", "lag-matrix")
+                shot("firmware.png", f"{base}/firmware", "fw-file")
                 page.goto(f"{server.url}/#/log")
                 page.reload()
                 page.get_by_test_id("log-row").first.wait_for()

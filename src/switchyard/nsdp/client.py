@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+from collections.abc import Callable
 
+from . import firmware as fw
 from . import tags as T
+from . import tftp
 from .auth import PasswordMode, credential_tlv, mode_from_flags, new_password_tlv
 from .packet import Op, Packet, format_mac
 from .transport import Transport
@@ -340,8 +343,11 @@ class SwitchClient:
             "ports": await self.read_ports(),
             "vlan": await self.read_vlan(),
             "qos": await self.read_qos(),
+            "lag": await self.read_lag(),
+            "port_admin": await self.read_port_admin(),
             **features,
             "rate_codes": T.RATE_CODES,
+            "admin_speeds": T.ADMIN_SPEEDS,
         }
 
     # -- changing settings ---------------------------------------------------
@@ -493,6 +499,124 @@ class SwitchClient:
 
     async def set_loop_detection(self, enabled: bool) -> None:
         await self.write([(T.LOOP_DETECTION, T.pack_flag(enabled))])
+
+    async def read_lag(self) -> dict | None:
+        async with self.lock:
+            count = await self._port_count()
+            reply = await self.read([T.LAG_COUNT, T.LAG])
+            rows = [T.lag(v, count) for v in reply.values(T.LAG) if len(v) >= 3]
+            groups = reply.first(T.LAG_COUNT)
+            if not rows and not groups:
+                return None
+            return {
+                "groups": groups[0] if groups else len(rows),
+                "max_members": 8 if self.model.upper().startswith("XS") else 4,
+                "lags": rows,
+            }
+
+    async def set_lag(self, group: int, enabled: bool, members: list[int]) -> None:
+        """Static link aggregation group. The checks mirror what the vendor utility enforces."""
+        count = await self._port_count()
+        members = sorted(set(members))
+        if enabled:
+            limit = 8 if self.model.upper().startswith("XS") else 4
+            if len(members) < 2:
+                raise ValueError("A LAG needs at least 2 member ports.")
+            if len(members) > limit:
+                raise ValueError(f"A LAG has at most {limit} member ports on this switch.")
+        lags = await self.read_lag()
+        if lags is None:
+            raise ValueError("This switch does not support link aggregation.")
+        if not 1 <= group <= lags["groups"]:
+            raise ValueError(f"The LAG number must be 1 to {lags['groups']}.")
+        if enabled:
+            for other in lags["lags"]:
+                clash = set(members) & set(other["members"]) if other["enabled"] else set()
+                if other["id"] != group and clash:
+                    raise ValueError(f"Port {min(clash)} already belongs to LAG {other['id']}.")
+        await self.write([(T.LAG, T.pack_lag(group, enabled, members if enabled else [], count))])
+
+    async def apply_lags(self, lags: list[dict]) -> None:
+        """Set all groups: first disable the groups that change, then enable the new ones."""
+        current = {x["id"]: x for x in (await self.read_lag() or {"lags": []})["lags"]}
+        wanted = {int(x["id"]): x for x in lags}
+        for gid, old in current.items():
+            new = wanted.get(gid)
+            if old["enabled"] and (
+                not new or not new["enabled"] or new["members"] != old["members"]
+            ):
+                await self.set_lag(gid, False, [])
+        for gid, new in sorted(wanted.items()):
+            if new["enabled"] and not (
+                current.get(gid, {}).get("enabled") and current[gid]["members"] == new["members"]
+            ):
+                await self.set_lag(gid, True, new["members"])
+
+    async def read_port_admin(self) -> dict | None:
+        async with self.lock:
+            await self._port_count()
+            reply = await self.read([T.PORT_ADMIN])
+            rows = [T.port_admin(v) for v in reply.values(T.PORT_ADMIN) if len(v) >= 2]
+            return {r["port"]: r for r in rows} if rows else None
+
+    async def set_port_admin(self, settings: dict[int, dict]) -> None:
+        """Speed and flow control per port: ``{port: {"speed_code": 0, "flow_control": False}}``."""
+        count = await self._port_count()
+        tlvs = []
+        for port, setting in sorted(settings.items()):
+            if not 1 <= port <= count:
+                raise ValueError(f"Port {port} does not exist.")
+            tlvs.append(
+                (
+                    T.PORT_STATUS,
+                    T.pack_port_admin(
+                        port, int(setting["speed_code"]), bool(setting.get("flow_control"))
+                    ),
+                )
+            )
+        if tlvs:
+            await self.write(tlvs)
+
+    async def upgrade_firmware(
+        self,
+        image: bytes,
+        filename: str = "firmware.flash",
+        progress: Callable[[str, int, int], None] | None = None,
+        force: bool = False,
+        settle: float = 2.0,
+    ) -> fw.Image:
+        """Check the image, switch the device into upgrade mode and push the file by TFTP.
+
+        The switch restarts by itself when flashing ends; the caller waits for it.
+        """
+        info = fw.parse(image)
+        async with self.lock:
+            identity = await self.read([*DISCOVERY_TAGS])
+            model = T.text(identity.first(T.MODEL) or b"")
+            if not force and not fw.matches_model(info.board, model):
+                raise fw.FirmwareError(
+                    f"This image is for {info.board or 'another board'}, the switch is a {model}."
+                )
+            host = self.address or T.ipv4(identity.first(T.IP) or bytes(4))
+            target = self.transport.tftp_target(host)
+            if progress:
+                progress("entering upgrade mode", 0, len(image))
+            await self._write([(T.FIRMWARE_UPGRADE, b"\x01")])
+            await asyncio.sleep(settle)
+            if progress:
+                progress("uploading", 0, len(image))
+            try:
+                await tftp.put(
+                    target[0],
+                    target[1],
+                    filename,
+                    image,
+                    (lambda sent, total: progress("uploading", sent, total)) if progress else None,
+                    timeout=self.transport.tftp_timeout,
+                )
+            except tftp.TftpError as exc:
+                raise NsdpError(0, T.FIRMWARE_UPGRADE, f"Firmware upload failed: {exc}") from exc
+        return info
 
     async def reset_stats(self) -> None:
         await self.write([(T.STATS_RESET, b"\x01")])

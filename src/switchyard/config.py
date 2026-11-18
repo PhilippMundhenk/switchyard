@@ -43,6 +43,7 @@ SCHEMA: list[tuple[str, str, object, str]] = [
     ),
     ("nsdp", "client_port", 63321, "UDP port this side uses (the protocol expects 63321)."),
     ("nsdp", "device_port", 63322, "UDP port the switches listen on."),
+    ("nsdp", "tftp_port", 69, "UDP port of the switch's TFTP server, used for firmware upgrades."),
     ("nsdp", "discovery_seconds", 2.0, "How long a search waits for answers."),
     (
         "nsdp",

@@ -9,7 +9,7 @@
 - **Cross-site requests.** Write requests with an `Origin` that differs from `Host` are refused.
 - **Browser hardening.** Strict content security policy (no inline script), `X-Frame-Options:
   DENY`, `nosniff`, no referrer. All text from switches and users is inserted as text.
-- **Destructive actions.** Reboot and factory reset need the switch MAC typed as confirmation.
+- **Destructive actions.** Reboot, factory reset and firmware upgrade need the switch MAC typed as confirmation. A firmware image is parsed and checksummed before anything is sent, is limited to 16 MB, and is never written to disk by Switchyard.
 - **Stored secrets.** `devices.json` and `secrets.json` are mode 0600. A switch password is stored
   only when you tick "remember". Backups contain no passwords. The protocol log blanks
   credentials.

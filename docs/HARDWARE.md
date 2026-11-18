@@ -23,6 +23,18 @@ Switchyard has so far only run against a simulator. Take it slowly and keep a wa
 6. Download a backup under *Maintenance* before you try VLANs.
 7. Try VLAN or QoS changes on ports that carry nothing important.
 
+## Riskier functions
+
+Try these last, on a switch you can afford to lose, with stable power:
+
+- **Firmware upgrade.** Use the official image for the exact model and hardware revision, make a
+  backup first, never power off during the upload or the restart (several minutes). If the switch
+  does not come back, wait 10 minutes, then power-cycle once. The recovery path depends on the model.
+- **Port speed and flow control.** A fixed speed needs the same setting at the other end. Switching
+  off the port you are connected through ends your session.
+- **Link aggregation.** Static trunks need the other end configured as a static trunk too, or the
+  network loops or drops traffic.
+
 ## Reporting
 
 Open a *Hardware report* issue. For a bug, copy the log with *Copy for bug report* on the

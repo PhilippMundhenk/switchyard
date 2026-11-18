@@ -18,6 +18,7 @@ The data folder is `/data` in the container, `./data` otherwise, or `--data DIR`
 | `nsdp.targets` | `SWITCHYARD_NSDP_TARGETS` | `[]` | Send to these addresses instead of broadcasting, e.g. ["192.168.5.255", "10.0.0.7:63322"]. For routed networks. |
 | `nsdp.client_port` | `SWITCHYARD_NSDP_CLIENT_PORT` | `63321` | UDP port this side uses (the protocol expects 63321). |
 | `nsdp.device_port` | `SWITCHYARD_NSDP_DEVICE_PORT` | `63322` | UDP port the switches listen on. |
+| `nsdp.tftp_port` | `SWITCHYARD_NSDP_TFTP_PORT` | `69` | UDP port of the switch's TFTP server, used for firmware upgrades. |
 | `nsdp.discovery_seconds` | `SWITCHYARD_NSDP_DISCOVERY_SECONDS` | `2.0` | How long a search waits for answers. |
 | `nsdp.poll_seconds` | `SWITCHYARD_NSDP_POLL_SECONDS` | `60` | Search in the background this often to keep the online state fresh. 0 = never. |
 | `demo.enabled` | `SWITCHYARD_DEMO_ENABLED` | `false` | true = start four simulated switches instead of using the network. |

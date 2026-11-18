@@ -22,13 +22,7 @@ export const ctx = {
   },
 };
 
-const LOGO = () => {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 32 32');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.innerHTML = '<rect width="32" height="32" rx="7" fill="#2f6fed"/><path d="M7 12h18M7 20h18" stroke="#fff" stroke-width="3" stroke-linecap="round"/>';
-  return svg;
-};
+const LOGO = () => h('img', { src: 'favicon.svg', alt: '', width: '28', height: '28', class: 'logo' });
 
 export function applyTheme(choice) {
   if (choice === 'light' || choice === 'dark') document.documentElement.dataset.theme = choice;

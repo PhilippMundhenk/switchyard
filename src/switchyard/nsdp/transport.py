@@ -81,8 +81,12 @@ class Transport:
         log_size: int = 500,
         timeout: float = 1.5,
         retries: int = 2,
+        tftp_port: int = 69,
+        tftp_timeout: float = 3.0,
         enumerate_interfaces: Callable[[], list[Interface]] = list_interfaces,
     ):
+        self.tftp_port = tftp_port
+        self.tftp_timeout = tftp_timeout
         self.timeout = timeout
         self.retries = retries
         self.client_port = client_port
@@ -142,6 +146,14 @@ class Transport:
         self.routes = []
         self._listener = None
         await asyncio.sleep(0)
+
+    def tftp_target(self, host: str | None) -> tuple[str, int]:
+        """Where the firmware upload goes: the switch's own address, or the fixed target."""
+        if self.targets:  # tests and demo mode: everything is on one host
+            return self.targets[0].partition(":")[0], self.tftp_port
+        if not host:
+            raise ValueError("The switch address is unknown. Search the network first.")
+        return host, self.tftp_port
 
     # -- packet log ----------------------------------------------------------
 

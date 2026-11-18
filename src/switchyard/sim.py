@@ -15,6 +15,7 @@ import struct
 import time
 from dataclasses import dataclass, field
 
+from .nsdp import firmware as fw
 from .nsdp import tags as T
 from .nsdp.auth import (
     TAG_AUTH_V2,
@@ -54,6 +55,8 @@ class SimSwitch:
     reboot_seconds: float = 3.0
     max_vlans: int = 32
     traffic: bool = True
+    lag_groups: int = 0  # 0 = by size: 2 for 5-port models, 4 otherwise
+    tftp_drop_blocks: set[int] = field(default_factory=set)  # lose the first ACK of these
 
     def __post_init__(self):
         self._mac = parse_mac(self.mac)
@@ -63,6 +66,8 @@ class SimSwitch:
         self._factory = {k: copy.deepcopy(v) for k, v in self.__dict__.items()}
         self.offline_until = 0.0
         self.salt = os.urandom(4)
+        self.upgrade_mode = False
+        self.upgrades = 0
         self.failed_logins = 0
         self.writes = 0
         self._reset_config()
@@ -84,6 +89,10 @@ class SimSwitch:
         self.block_unknown = False
         self.validate_v3 = False
         self.loop_detection = False
+        self.lags = {
+            g: (False, []) for g in range(1, (self.lag_groups or (2 if self.ports <= 5 else 4)) + 1)
+        }
+        self.admin = dict.fromkeys(every, (0, False))
         self.counters = {p: [0] * 6 for p in every}
         self._last_tick = time.monotonic()
 
@@ -92,6 +101,15 @@ class SimSwitch:
     @property
     def online(self) -> bool:
         return time.monotonic() >= self.offline_until
+
+    def effective_link(self, port: int) -> int:
+        """The link code the port reports, after the admin speed setting."""
+        base = self.links[port - 1]
+        speed, _ = self.admin[port]
+        if speed == 1:
+            return 0
+        fixed = {2: 1, 3: 2, 4: 3, 5: 4, 6: 5}.get(speed)
+        return base if fixed is None or not base else min(base, fixed)
 
     def _tick(self) -> None:
         now = time.monotonic()
@@ -146,7 +164,9 @@ class SimSwitch:
             T.FIRMWARE: lambda: [self.firmware.encode()],
             T.PORT_COUNT: lambda: [bytes([n])],
             T.MAX_VLANS: lambda: [struct.pack(">H", self.max_vlans)],
-            T.PORT_STATUS: lambda: [bytes([p, self.links[p - 1], 0]) for p in every],
+            T.PORT_STATUS: lambda: [
+                bytes([p, self.effective_link(p), int(self.admin[p][1])]) for p in every
+            ],
             T.PORT_STATS: lambda: [T.pack_port_stats(p, self.counters[p]) for p in every],
             T.VLAN_MODE: lambda: [bytes([self.vlan_mode])],
             T.PVID: lambda: [T.pack_port_u16(p, self.pvid[p]) for p in every],
@@ -162,6 +182,12 @@ class SimSwitch:
             T.IGMP_VALIDATE_V3: lambda: [T.pack_flag(self.validate_v3)],
             T.LOOP_DETECTION: lambda: [T.pack_flag(self.loop_detection)],
         }
+        if tag == T.LAG_COUNT:
+            return [bytes([len(self.lags)])]
+        if tag == T.LAG:
+            return [T.pack_lag(g, e, m, n) for g, (e, m) in sorted(self.lags.items())]
+        if tag == T.PORT_ADMIN:
+            return [T.pack_port_admin(p, *self.admin[p]) for p in every]
         if tag in simple:
             return simple[tag]()
         if tag == T.SERIAL:
@@ -320,10 +346,44 @@ class SimSwitch:
             self.validate_v3 = T.flag(value)
         elif tag == T.LOOP_DETECTION:
             self.loop_detection = T.flag(value)
+        elif tag == T.PORT_STATUS:
+            port, code = value[0], value[1]
+            self._check_ports(port)
+            if code not in T.ADMIN_SPEEDS:
+                return BAD_VALUE
+            if any(port in m for e, m in self.lags.values() if e) and code == 1:
+                return BAD_VALUE  # a LAG member cannot be switched off
+            self.admin[port] = (code, bool(value[2]) if len(value) > 2 else False)
+        elif tag == T.LAG:
+            return self._set_lag(T.lag(value, n))
+        elif tag == T.FIRMWARE_UPGRADE:
+            self.upgrade_mode = True
         elif tag in (TAG_PASSWORD, TAG_AUTH_V2):
             pass
         else:
             return UNSUPPORTED
+        return OK
+
+    def _set_lag(self, group: dict) -> int:
+        gid, members = group["id"], group["members"]
+        if gid not in self.lags:
+            return BAD_VALUE
+        if not group["enabled"]:
+            self.lags[gid] = (False, [])
+            return OK
+        limit = 8 if self.model.upper().startswith("XS") else 4
+        if not 2 <= len(members) <= limit:
+            return BAD_VALUE
+        if any(set(members) & set(m) for g, (e, m) in self.lags.items() if e and g != gid):
+            return BAD_VALUE
+        if len({self.admin[p] for p in members}) > 1:
+            return BAD_VALUE  # members must share speed and flow control
+        if len({self.pvid[p] for p in members}) > 1:
+            return BAD_VALUE  # and the same PVID
+        dest, sources = self.mirror
+        if set(members) & ({dest} | set(sources)):
+            return BAD_VALUE  # LAG members cannot take part in mirroring
+        self.lags[gid] = (True, members)
         return OK
 
     def _reset_vlans(self) -> None:
@@ -331,6 +391,66 @@ class SimSwitch:
         self.port_vlans = {1: list(every)}
         self.dot1q = {1: (list(every), [])}
         self.pvid = dict.fromkeys(every, 1)
+
+
+class SimTftp(asyncio.DatagramProtocol):
+    """The TFTP server of the simulated switches: accepts one firmware upload."""
+
+    def __init__(self, switches: list[SimSwitch]):
+        self.switches = switches
+        self.transport: asyncio.DatagramTransport | None = None
+        self.sessions: dict[tuple, dict] = {}
+
+    def connection_made(self, transport):
+        self.transport = transport
+
+    def _error(self, addr, code: int, text: str) -> None:
+        self.transport.sendto(struct.pack(">HH", 5, code) + text.encode() + b"\0", addr)
+
+    def datagram_received(self, data: bytes, addr) -> None:
+        if len(data) < 4:
+            return
+        op = struct.unpack(">H", data[:2])[0]
+        if op == 2:  # write request
+            switch = next((s for s in self.switches if s.upgrade_mode and s.online), None)
+            if switch is None:
+                return self._error(addr, 4, "Illegal operation")
+            self.sessions[addr] = {
+                "switch": switch,
+                "data": bytearray(),
+                "last": 0,
+                "dropped": set(),
+            }
+            self.transport.sendto(struct.pack(">HH", 4, 0), addr)
+        elif op == 3 and addr in self.sessions:
+            session = self.sessions[addr]
+            block = struct.unpack(">H", data[2:4])[0]
+            if block == (session["last"] + 1) & 0xFFFF:
+                session["data"] += data[4:]
+                session["last"] = block
+                if len(data) - 4 < 512:
+                    return self._finish(addr, block)
+            switch = session["switch"]
+            if block in switch.tftp_drop_blocks and block not in session["dropped"]:
+                session["dropped"].add(block)
+                return  # lose this ACK once: the client must retransmit
+            self.transport.sendto(struct.pack(">HH", 4, block), addr)
+
+    def _finish(self, addr, block: int) -> None:
+        session = self.sessions.pop(addr)
+        switch = session["switch"]
+        try:
+            image = fw.parse(bytes(session["data"]))
+            if not fw.matches_model(image.board, switch.model):
+                raise fw.FirmwareError("wrong board")
+        except fw.FirmwareError:
+            switch.upgrade_mode = False
+            return self._error(addr, 0, "Firmware upgrade failure!")
+        self.transport.sendto(struct.pack(">HH", 4, block), addr)
+        switch.firmware = image.version
+        switch.upgrade_mode = False
+        switch.upgrades += 1
+        switch.offline_until = time.monotonic() + switch.reboot_seconds
 
 
 class Simulator(asyncio.DatagramProtocol):
@@ -341,6 +461,9 @@ class Simulator(asyncio.DatagramProtocol):
         self.transport: asyncio.DatagramTransport | None = None
         self.port = 0
         self.requests = 0
+        self.tftp = SimTftp(switches)
+        self.tftp_transport: asyncio.DatagramTransport | None = None
+        self.tftp_port = 0
 
     async def start(self, host: str = "127.0.0.1", port: int = 0) -> int:
         loop = asyncio.get_running_loop()
@@ -348,12 +471,19 @@ class Simulator(asyncio.DatagramProtocol):
             lambda: self, local_addr=(host, port)
         )
         self.port = self.transport.get_extra_info("sockname")[1]
+        self.tftp_transport, _ = await loop.create_datagram_endpoint(
+            lambda: self.tftp, local_addr=(host, 0)
+        )
+        self.tftp_port = self.tftp_transport.get_extra_info("sockname")[1]
         return self.port
 
     def stop(self) -> None:
         if self.transport:
             self.transport.close()
             self.transport = None
+        if self.tftp_transport:
+            self.tftp_transport.close()
+            self.tftp_transport = None
 
     def datagram_received(self, data: bytes, addr) -> None:
         try:
@@ -400,7 +530,7 @@ def demo_switches() -> list[SimSwitch]:
             dhcp=True,
             firmware="1.02.04",
             links=[5, 0, 4, 0, 5],
-            unsupported={T.LOOP_DETECTION, T.SERIAL},
+            unsupported={T.LOOP_DETECTION, T.SERIAL, T.PORT_ADMIN},
         ),
         SimSwitch(
             "28:c6:8e:dd:40:04",

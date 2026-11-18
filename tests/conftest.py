@@ -49,10 +49,11 @@ async def transport(sim):
     await t.stop()
 
 
-def make_env(sim_port: int, **extra) -> dict[str, str]:
+def make_env(sim_port: int, tftp_port: int = 69, **extra) -> dict[str, str]:
     env = {
         "SWITCHYARD_NSDP_TARGETS": f"127.0.0.1:{sim_port}",
         "SWITCHYARD_NSDP_CLIENT_PORT": "0",
+        "SWITCHYARD_NSDP_TFTP_PORT": str(tftp_port),
         "SWITCHYARD_NSDP_POLL_SECONDS": "0",
         "SWITCHYARD_NSDP_DISCOVERY_SECONDS": "0.3",
         "SWITCHYARD_AUTH_PASSWORD": PASSWORD,
@@ -63,7 +64,7 @@ def make_env(sim_port: int, **extra) -> dict[str, str]:
 
 @pytest.fixture
 def config(tmp_path, sim):
-    return cfg.load(tmp_path, env=make_env(sim.port))
+    return cfg.load(tmp_path, env=make_env(sim.port, sim.tftp_port))
 
 
 @pytest.fixture

@@ -1,3 +1,5 @@
+<img src="docs/assets/icon.svg" alt="" width="96" align="right">
+
 # Switchyard
 
 A web interface for managing NETGEAR ProSAFE Plus ("Smart Managed Plus", "Easy Smart") switches
@@ -60,12 +62,12 @@ Want to look around first? `docker run --rm -p 8080:8080 -e SWITCHYARD_DEMO_ENAB
 | Network | Name, DHCP or static IP |
 | VLAN | Port-based and 802.1Q, matrix editor, PVID, safe "apply the whole table" |
 | QoS | 802.1p or port based priority, ingress/egress rate limits, broadcast storm control |
+| Ports | Speed and flow control per port, link aggregation (static LAG) |
 | Other | Port mirroring, IGMP snooping, loop detection, cable test |
-| Maintenance | Switch password, reboot, factory reset, JSON backup and restore |
+| Maintenance | Switch password, reboot, factory reset, JSON backup and restore, **firmware upgrade** (checked image, typed confirmation, progress) |
 | Debugging | Live protocol log with passwords blanked |
 
-Not included yet: firmware upgrade, link aggregation, port speed and flow control, LED and power
-saving options. See the [issues](https://github.com/PhilippMundhenk/switchyard/issues).
+Not included: LACP (these switches only do static aggregation), LED and power saving options. Link aggregation, port speed and firmware upgrade are new and, like everything else, **not yet verified on real hardware**; the firmware upgrade is the riskiest function, read [docs/HARDWARE.md](docs/HARDWARE.md) first.
 
 ## Screenshots
 

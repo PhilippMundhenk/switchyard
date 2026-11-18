@@ -1,15 +1,24 @@
 name: Release
 
+#   main branch  -> ghcr.io/<owner>/switchyard:latest, :main, :sha-<short>
+#   tag vX.Y.Z   -> gates, then :X.Y.Z, :X.Y, :latest + GitHub release with wheel and notes
+
 on:
   push:
+    branches: [main]
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
   packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/switchyard
 
 jobs:
   gates:
+    name: Gates before a release
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -23,10 +32,12 @@ jobs:
       - run: pytest -m e2e tests/e2e
       - run: python -m build
       - uses: actions/upload-artifact@v4
-        with: { name: dist, path: dist/* }
+        with: { name: dist, path: dist/*, retention-days: 7 }
 
   image:
+    name: Build and push image
     needs: gates
+    if: ${{ !cancelled() && (needs.gates.result == 'success' || needs.gates.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -41,30 +52,41 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/philippmundhenk/switchyard
+          images: ${{ env.IMAGE }}
           tags: |
+            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
       - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: true
+          sbom: true
           build-args: VERSION=${{ github.ref_name }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-  release:
+  github-release:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [gates, image]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { name: dist, path: dist }
-      - name: Changelog section
-        run: |
-          v="${GITHUB_REF_NAME#v}"
-          awk -v v="$v" '$0 ~ "^## \\["v"\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > notes.md
-      - run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file notes.md
-        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*
+          body: |
+            Container image: `${{ env.IMAGE }}:${{ github.ref_name }}` (also `:latest`).
+            See [CHANGELOG.md](CHANGELOG.md) for the details.

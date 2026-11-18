@@ -41,6 +41,7 @@ flowchart LR
 | `nsdp/packet.py` | header and TLV codec |
 | `nsdp/auth.py` | password encodings |
 | `nsdp/tags.py` | tag numbers and value layouts |
+| `nsdp/tftp.py`, `nsdp/firmware.py` | TFTP client, firmware image checks |
 | `nsdp/transport.py` | sockets, retries, sequence matching, packet log |
 | `nsdp/client.py` | typed reads and authenticated writes for one switch |
 | `manager.py` | list of switches, discovery, backup and restore |
@@ -51,7 +52,7 @@ flowchart LR
 ## Decisions
 
 See [adr](adr/README.md). In short: Python and FastAPI, a no-build vanilla JS UI, NSDP rather than
-scraping, a simulator first, host networking, a password for the UI, no firmware upgrade yet.
+scraping, a simulator first, host networking, a password for the UI, firmware upgrade with guardrails.
 
 ## Open questions
 

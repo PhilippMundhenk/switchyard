@@ -1,11 +1,20 @@
 version: 2
 updates:
-  - package-ecosystem: pip
-    directory: /
-    schedule: { interval: weekly }
-  - package-ecosystem: docker
-    directory: /
-    schedule: { interval: weekly }
   - package-ecosystem: github-actions
     directory: /
-    schedule: { interval: weekly }
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Etc/UTC }
+    labels: [dependencies, github-actions]
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Etc/UTC }
+    labels: [dependencies, docker]
+  - package-ecosystem: pip
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Etc/UTC }
+    labels: [dependencies]
+    groups:
+      minor-patch:
+        update-types: [minor, patch]
