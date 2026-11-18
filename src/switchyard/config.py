@@ -52,6 +52,14 @@ SCHEMA: list[tuple[str, str, object, str]] = [
         "Search in the background this often to keep the online state fresh.\n# 0 = never.",
     ),
     (
+        "backup",
+        "interval_hours",
+        24,
+        "Store a configuration backup of every managed switch this often (only when it changed).\n"
+        "# 0 = off.",
+    ),
+    ("backup", "keep", 14, "How many stored backups to keep per switch."),
+    (
         "monitor",
         "interval_seconds",
         30,

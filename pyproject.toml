@@ -43,6 +43,7 @@ ignore = ["RUF012"]
 
 [tool.ruff.lint.per-file-ignores]
 "tools/make_icons.py" = ["E501"]
+"src/switchyard/diff.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

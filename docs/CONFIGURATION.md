@@ -21,6 +21,8 @@ The data folder is `/data` in the container, `./data` otherwise, or `--data DIR`
 | `nsdp.tftp_port` | `SWITCHYARD_NSDP_TFTP_PORT` | `69` | UDP port of the switch's TFTP server, used for firmware upgrades. |
 | `nsdp.discovery_seconds` | `SWITCHYARD_NSDP_DISCOVERY_SECONDS` | `2.0` | How long a search waits for answers. |
 | `nsdp.poll_seconds` | `SWITCHYARD_NSDP_POLL_SECONDS` | `60` | Search in the background this often to keep the online state fresh. 0 = never. |
+| `backup.interval_hours` | `SWITCHYARD_BACKUP_INTERVAL_HOURS` | `24` | Store a configuration backup of every managed switch this often (only when it changed). 0 = off. |
+| `backup.keep` | `SWITCHYARD_BACKUP_KEEP` | `14` | How many stored backups to keep per switch. |
 | `monitor.interval_seconds` | `SWITCHYARD_MONITOR_INTERVAL_SECONDS` | `30` | Read the ports of every managed switch this often to keep history, link events and metrics. 0 = off. |
 | `monitor.history_minutes` | `SWITCHYARD_MONITOR_HISTORY_MINUTES` | `60` | How much traffic history to keep in memory. |
 | `metrics.token` | `SWITCHYARD_METRICS_TOKEN` | `""` | Bearer token for GET /metrics (Prometheus). Empty: /metrics needs a web session. |
@@ -34,6 +36,7 @@ The data folder is `/data` in the container, `./data` otherwise, or `--data DIR`
 | --- | --- |
 | `switchyard.toml` | This configuration. |
 | `devices.json` | The switches you manage: label, notes, fixed address, last seen info, and the switch password if you ticked "remember". Mode 0600. |
+| `backups/<mac>/*.json` | Automatic configuration backups (mode 0600). No passwords inside. |
 | `secrets.json` | Hash of the generated web password (scrypt). Mode 0600. Only used when `auth.password` is empty. |
 
 Back up the folder to keep your list of switches. Treat `devices.json` as a secret.

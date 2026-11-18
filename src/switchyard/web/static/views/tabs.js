@@ -579,6 +579,15 @@ async function maintenance(host, S) {
     clear(steps).append(h('ul', {}, ...res.steps.map((s) => h('li', { class: s.ok ? 'ok-text' : 'error' }, `${s.ok ? '✓' : '✗'} ${s.step}${s.error ? `: ${s.error}` : ''}`))));
     toast(res.ok ? 'Configuration restored.' : 'Restore finished with errors.', res.ok ? 'ok' : 'error');
   });
+  const compareBtn = h('button', { class: 'btn', 'data-testid': 'compare-file' }, 'Compare with the switch');
+  compareBtn.addEventListener('click', async () => {
+    const f = file.files && file.files[0];
+    if (!f) return toast('Choose a backup file first.', 'error');
+    let backup;
+    try { backup = JSON.parse(await f.text()); } catch (e) { return toast('This file is not valid JSON.', 'error'); }
+    const res = await run(compareBtn, () => post(`${dev(S.mac)}/diff`, { backup }));
+    if (res) showDiff(res);
+  });
   const backupBtn = h('button', { class: 'btn', 'data-testid': 'backup' }, 'Download backup');
   backupBtn.addEventListener('click', () => run(backupBtn, async () => {
     const data = await get(`${dev(S.mac)}/backup`);
@@ -594,15 +603,47 @@ async function maintenance(host, S) {
     await put(`${dev(S.mac)}/labels`, { ports: Object.fromEntries(portIds.map((p) => [p, portInputs[p].value])), vlans: Object.fromEntries(vlanIds.map((v) => [v, vlanInputs[v].value])) });
     toast('Names saved.'); await S.reload();
   }));
+  // stored backups and comparison
+  const showDiff = (res) => modal({
+    title: res.same ? 'No differences' : `${res.changes.length} difference${res.changes.length === 1 ? '' : 's'}`,
+    body: res.same ? h('p', {}, 'The switch matches this backup.') : h('div', { 'data-testid': 'diff-list' }, h('p', { class: 'muted' }, 'A restore would change:'), h('ul', {}, ...res.changes.map((c) => h('li', {}, h('b', {}, `${c.area}: `), c.text)))),
+    actions: (close) => [h('button', { class: 'btn primary', onclick: close }, 'Close')],
+  });
+  const backupRows = h('tbody', { 'data-testid': 'backup-rows' });
+  const loadBackups = async () => {
+    const { backups, interval_hours: every } = await get(`${dev(S.mac)}/backups`);
+    clear(backupRows);
+    if (!backups.length) backupRows.append(h('tr', {}, h('td', { colspan: '3', class: 'muted', 'data-testid': 'backups-empty' }, every ? `No stored backups yet. One is made every ${every} h when the configuration changed.` : 'No stored backups. Automatic backups are off.')));
+    for (const b of backups) {
+      const name = b.name;
+      backupRows.append(h('tr', { 'data-testid': 'backup-row', 'data-name': name },
+        h('td', {}, new Date(b.created * 1000).toLocaleString()), h('td', { class: 'num' }, fmtBytes(b.size)),
+        h('td', {}, h('div', { class: 'row' },
+          h('button', { class: 'btn small', 'data-testid': 'backup-compare', onclick: (e) => run(e.target, async () => showDiff(await post(`${dev(S.mac)}/diff`, { stored: name }))) }, 'Compare'),
+          h('button', { class: 'btn small', 'data-testid': 'backup-restore', onclick: async (e) => {
+            if (!(await confirmDialog({ title: 'Restore backup', message: 'This overwrites VLAN, QoS, mirroring, IGMP, LAG and port settings on the switch with those of this backup.', confirmLabel: 'Restore' }))) return;
+            const res = await run(e.target, () => withSwitchAuth(S.mac, S.name, () => post(`${dev(S.mac)}/restore`, { stored: name })));
+            if (res) toast(res.ok ? 'Configuration restored.' : 'Restore finished with errors.', res.ok ? 'ok' : 'error');
+          } }, 'Restore'),
+          h('a', { class: 'btn small', href: `/api${dev(S.mac)}/backups/${name}`, download: name }, 'Download'),
+          h('button', { class: 'btn small ghost', 'data-testid': 'backup-delete', onclick: (e) => run(e.target, async () => { await del(`${dev(S.mac)}/backups/${name}`); await loadBackups(); }) }, 'Delete')))));
+    }
+  };
+  const backupNow = h('button', { class: 'btn', 'data-testid': 'backup-now' }, 'Back up now');
+  backupNow.addEventListener('click', () => run(backupNow, async () => { await post(`${dev(S.mac)}/backups`); toast('Backup stored.'); await loadBackups(); }));
+  loadBackups().catch(() => {});
+
   host.append(
     section('This entry', field('Label', label), field('Notes', notes), field('Fixed address', address, 'Set this for a switch on another subnet; Switchyard then talks to it directly.'),
       h('div', { class: 'row' }, saveMeta, forget, remove)),
+    section('Automatic backups', h('p', { class: 'muted' }, 'Stored on the server in the data folder. Backups contain the configuration, never passwords.'),
+      h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Created'), h('th', { class: 'num' }, 'Size'), h('th', {}, ''))), backupRows)), h('p', {}, backupNow)),
     section('Port and VLAN names', h('p', { class: 'muted' }, 'Names are kept by Switchyard (not on the switch) and shown in the port panel, the tables and the editors.'),
       h('div', { class: 'grid' }, ...portIds.map((p) => field(`Port ${p}`, portInputs[p])), ...vlanIds.map((v) => field(`VLAN ${v}`, vlanInputs[v]))), h('p', {}, saveNames)),
     section('Switch password', h('p', { class: 'muted' }, d.has_password ? 'A password is stored for this switch.' : 'No password is stored. You are asked when you change something.'),
       field('New password', newPw, '1 to 20 characters.'), h('p', {}, pwBtn)),
     section('Backup and restore', h('p', { class: 'muted' }, 'A backup holds VLANs, QoS, mirroring, IGMP and loop detection plus name and IP settings.'),
-      h('p', {}, backupBtn), h('hr'), field('Backup file', file), h('label', { class: 'check' }, withNet, ' Also restore name and IP settings'), h('p', {}, restoreBtn), steps),
+      h('p', {}, backupBtn), h('hr'), field('Backup file', file), h('label', { class: 'check' }, withNet, ' Also restore name and IP settings'), h('div', { class: 'row' }, compareBtn, restoreBtn), steps),
     section('Restart and reset',
       h('div', { class: 'row' },
         dangerous('Reboot', 'reboot', 'Reboot switch', 'The switch restarts and drops traffic for about half a minute.', 'The switch is restarting.'),

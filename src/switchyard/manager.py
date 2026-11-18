@@ -5,10 +5,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import ipaddress
+import json
 import logging
+import os
 import time
 
+from .backups import BackupStore
 from .config import Config
+from .diff import diff_config
 from .monitor import Monitor
 from .nsdp import SwitchClient, Transport, discover, parse_mac, probe
 from .nsdp import firmware as fw
@@ -43,11 +47,14 @@ class Manager:
             config["monitor.history_minutes"],
             config["notify.webhook_url"],
         )
+        self.backups = BackupStore(config.data_dir / "backups", config["backup.keep"])
+        self._backup_task: asyncio.Task | None = None
         self.upgrades: dict[str, dict] = {}
         self._upgrade_tasks: set[asyncio.Task] = set()
         self.upgrade_settle = 2.0  # pause between 'upgrade mode' and the upload
         self.upgrade_wait = 300.0  # how long to wait for the switch to come back
         self.upgrade_poll = 3.0
+        self.backup_tick = 60.0  # how often the backup scheduler looks
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -57,9 +64,13 @@ class Manager:
         if seconds > 0:
             self._poller = asyncio.create_task(self._poll(seconds))
         self.monitor.start()
+        if self.config["backup.interval_hours"] > 0:
+            self._backup_task = asyncio.create_task(self._backup_loop())
 
     async def stop(self) -> None:
         await self.monitor.stop()
+        if self._backup_task:
+            self._backup_task.cancel()
         for task in list(self._upgrade_tasks):
             task.cancel()
         if self._poller:
@@ -357,6 +368,44 @@ class Manager:
                 ),
             )
         return steps
+
+    # -- stored backups ------------------------------------------------------
+
+    async def backup_now(self, mac: str) -> str:
+        return self.backups.save(mac, await self.backup(mac))
+
+    async def backup_due(self, mac: str, interval_hours: float) -> bool:
+        rows = self.backups.list(mac)
+        return not rows or time.time() - rows[0]["created"] >= interval_hours * 3600
+
+    async def _backup_loop(self) -> None:
+        """Every minute: back up the online switches whose last backup is too old and changed."""
+        await asyncio.sleep(2)  # let discovery settle after a start
+        while True:
+            for mac in list(self.store.devices):
+                try:
+                    if not await self.backup_due(mac, self.config["backup.interval_hours"]):
+                        continue
+                    data = await self.backup(mac)
+                    last = self.backups.latest(mac)
+                    # compare as JSON: stored files turn integer keys into strings
+                    if last is None or last.get("config") != json.loads(json.dumps(data["config"])):
+                        self.backups.save(mac, data)
+                    else:  # unchanged: touch nothing, but do not retry every minute
+                        rows = self.backups.list(mac)
+                        os.utime(self.backups.path(mac, rows[0]["name"]))
+                except Exception as exc:
+                    log.info("scheduled backup of %s skipped: %s", mac, exc)
+            await asyncio.sleep(self.backup_tick)
+
+    async def diff(self, mac: str, other: dict) -> list[dict]:
+        if other.get("format") != BACKUP_FORMAT or other.get("version") != 1:
+            raise ValueError("This file is not a Switchyard backup.")
+        live = await self.backup(mac)
+        try:
+            return diff_config(live["config"], other["config"])
+        except (KeyError, TypeError, AttributeError) as exc:
+            raise ValueError(f"The backup file is incomplete or damaged ({exc!r}).") from exc
 
     # -- firmware ------------------------------------------------------------
 

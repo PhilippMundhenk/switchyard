@@ -11,7 +11,7 @@
   DENY`, `nosniff`, no referrer. All text from switches and users is inserted as text.
 - **Destructive actions.** Reboot, factory reset and firmware upgrade need the switch MAC typed as confirmation. A firmware image is parsed and checksummed before anything is sent, is limited to 16 MB, and is never written to disk by Switchyard.
 - **Stored secrets.** `devices.json` and `secrets.json` are mode 0600. A switch password is stored
-  only when you tick "remember". Backups contain no passwords. The protocol log blanks
+  only when you tick "remember". Backups, uploaded or stored, contain no passwords; stored backup names are validated, so a request cannot reach other files. The protocol log blanks
   credentials.
 - **Outbound connections.** Switchyard talks to the switches and, only if you set `notify.webhook_url`, POSTs event messages (switch name, MAC, port text) to that URL. Nothing else leaves the machine.
 - **Metrics.** `/metrics` needs a web session or the bearer token from `metrics.token`; it reveals MAC addresses, names and port counters.

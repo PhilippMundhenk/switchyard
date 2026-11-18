@@ -428,3 +428,36 @@ def test_port_and_vlan_names_show_up(app):
     expect(app.get_by_test_id("vlan-row-1")).to_contain_text("Default")
     open_tab(app, "ports")
     expect(app.get_by_test_id("stat-1")).to_contain_text("NAS")
+
+
+def test_stored_backups_compare_and_restore(app):
+    add_switch(app, MAC, "password")
+    open_tab(app, "maintenance")
+    expect(app.get_by_test_id("backups-empty")).to_be_visible()
+    app.get_by_test_id("backup-now").click()
+    expect(app.get_by_test_id("backup-row")).to_have_count(1)
+    api(app, "PUT", f"/devices/{MAC}/loop-detection", {"enabled": True})
+    app.get_by_test_id("backup-compare").click()
+    expect(app.get_by_test_id("diff-list")).to_contain_text("Loop detection")
+    app.get_by_role("button", name="Close").click()
+    app.get_by_test_id("backup-restore").click()
+    app.get_by_test_id("confirm-ok").click()
+    expect(app.locator(".toast").last).to_contain_text("Configuration restored")
+    assert api(app, "GET", f"/devices/{MAC}/state").json()["loop_detection"] is False
+    app.get_by_test_id("backup-compare").click()
+    expect(app.get_by_role("dialog")).to_contain_text("No differences")
+    app.get_by_role("button", name="Close").click()
+    app.get_by_test_id("backup-delete").click()
+    expect(app.get_by_test_id("backups-empty")).to_be_visible()
+
+
+def test_compare_an_uploaded_file(app, tmp_path):
+    add_switch(app, MAC, "password")
+    data = api(app, "GET", f"/devices/{MAC}/backup").json()
+    data["config"]["network"]["name"] = "other-name"
+    path = tmp_path / "b.json"
+    path.write_text(json.dumps(data))
+    open_tab(app, "maintenance")
+    app.get_by_test_id("restore-file").set_input_files(str(path))
+    app.get_by_test_id("compare-file").click()
+    expect(app.get_by_test_id("diff-list")).to_contain_text("name: office → other-name")

@@ -162,8 +162,14 @@ class ConfirmBody(BaseModel):
 
 
 class RestoreBody(BaseModel):
-    backup: dict
+    backup: dict | None = None
+    stored: str | None = None
     include_network: bool = False
+
+
+class DiffBody(BaseModel):
+    backup: dict | None = None
+    stored: str | None = None
 
 
 def error(status: int, code: str, message: str, **extra) -> JSONResponse:
@@ -600,9 +606,58 @@ def create_app(config: Config) -> FastAPI:
         name = f"switchyard-{data['switch']['model']}-{mac.replace(':', '')}.json"
         return JSONResponse(data, headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
+    def pick_backup(mac: str, backup: dict | None, stored: str | None) -> dict:
+        if (backup is None) == (stored is None):
+            raise ValueError("Give either a backup or the name of a stored backup.")
+        if stored is not None:
+            try:
+                return manager().backups.read(mac, stored)
+            except FileNotFoundError as exc:
+                raise NotFound(mac) from exc
+        return backup
+
+    @api.get("/devices/{mac}/backups")
+    def list_backups(mac: str):
+        m = manager()
+        m.device(mac)
+        return {"backups": m.backups.list(mac), "interval_hours": config["backup.interval_hours"]}
+
+    @api.post("/devices/{mac}/backups", status_code=201)
+    async def create_backup(mac: str):
+        m = manager()
+        m.device(mac)
+        return {"name": await m.backup_now(mac)}
+
+    @api.get("/devices/{mac}/backups/{name}")
+    def download_backup(mac: str, name: str):
+        m = manager()
+        m.device(mac)
+        try:
+            data = m.backups.read(mac, name)
+        except FileNotFoundError as exc:
+            raise NotFound(mac) from exc
+        return JSONResponse(data, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @api.delete("/devices/{mac}/backups/{name}")
+    def delete_backup(mac: str, name: str):
+        m = manager()
+        m.device(mac)
+        try:
+            m.backups.delete(mac, name)
+        except FileNotFoundError as exc:
+            raise NotFound(mac) from exc
+        return {"ok": True}
+
+    @api.post("/devices/{mac}/diff")
+    async def diff(mac: str, body: DiffBody):
+        other = pick_backup(mac, body.backup, body.stored)
+        changes = await manager().diff(mac, other)
+        return {"same": not changes, "changes": changes}
+
     @api.post("/devices/{mac}/restore")
     async def restore(mac: str, body: RestoreBody):
-        steps = await manager().restore(mac, body.backup, body.include_network)
+        backup = pick_backup(mac, body.backup, body.stored)
+        steps = await manager().restore(mac, backup, body.include_network)
         return {"ok": all(s["ok"] for s in steps), "steps": steps}
 
     @app.get("/metrics", include_in_schema=False)

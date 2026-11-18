@@ -64,7 +64,7 @@ Want to look around first? `docker run --rm -p 8080:8080 -e SWITCHYARD_DEMO_ENAB
 | QoS | 802.1p or port based priority, ingress/egress rate limits, broadcast storm control |
 | Ports | Speed and flow control per port, link aggregation (static LAG) |
 | Other | Port mirroring, IGMP snooping, loop detection, cable test |
-| Maintenance | Switch password, reboot, factory reset, JSON backup and restore, **firmware upgrade** (checked image, typed confirmation, progress) |
+| Maintenance | Switch password, reboot, factory reset, JSON backup and restore, automatic stored backups, compare a backup with the live switch, port and VLAN names, **firmware upgrade** (checked image, typed confirmation, progress) |
 | Monitoring | Background port polling: traffic history chart, link and online/offline events, live port dots on every card, Prometheus `/metrics`, optional webhook |
 | Debugging | Live protocol log with passwords blanked |
 
@@ -90,6 +90,7 @@ Most settings have a sensible default. The common ones:
 | `SWITCHYARD_NSDP_INTERFACES` | Search only these interfaces, e.g. `eth0` |
 | `SWITCHYARD_NSDP_TARGETS` | Directed broadcast or switch addresses for routed networks |
 | `SWITCHYARD_MONITOR_INTERVAL_SECONDS` | How often ports are read for history and events, default 30, 0 = off |
+| `SWITCHYARD_BACKUP_INTERVAL_HOURS` | Automatic backups (only when the configuration changed), default 24, 0 = off |
 | `SWITCHYARD_METRICS_TOKEN` | Bearer token for `/metrics` |
 | `SWITCHYARD_NOTIFY_WEBHOOK_URL` | POST link and online/offline events here |
 | `SWITCHYARD_DEMO_ENABLED` | Use simulated switches |
