@@ -33,6 +33,7 @@ path = "src/switchyard/__init__.py"
 packages = ["src/switchyard"]
 
 [tool.ruff]
+extend-exclude = ["tools/consistency_check.py"]  # vendored from the release skill
 line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
