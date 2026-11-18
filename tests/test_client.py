@@ -323,7 +323,8 @@ async def test_request_timeout_raises(transport):
 async def test_packet_log_never_holds_passwords(transport):
     c = client_for(transport, password="hunter2-secret")
     sw_pass = b"hunter2-secret"
-    await c.write([(T.NAME, b"x")])
+    with pytest.raises(AuthError):
+        await c.write([(T.NAME, b"x")])
     blob = b"".join(bytes.fromhex(e["hex"]) for e in transport.packet_log)
     from switchyard.nsdp.auth import xor_password
 
