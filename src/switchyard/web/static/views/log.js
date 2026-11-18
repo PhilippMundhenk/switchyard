@@ -7,7 +7,7 @@ export async function renderLog(main, ctx) {
   let paused = false;
   let entries = [];
   const devices = (await get('/devices')).devices;
-  const filter = h('select', { id: 'log-filter', 'data-testid': 'log-filter' }, h('option', { value: '' }, 'All switches'),
+  const filter = h('select', { id: 'log-filter', 'aria-label': 'Switch', 'data-testid': 'log-filter' }, h('option', { value: '' }, 'All switches'),
     ...devices.map((d) => h('option', { value: d.mac }, d.label || d.info.name || d.mac)));
   const body = h('tbody', { 'data-testid': 'log-body' });
   const pause = h('button', { class: 'btn', 'data-testid': 'log-pause' }, 'Pause');

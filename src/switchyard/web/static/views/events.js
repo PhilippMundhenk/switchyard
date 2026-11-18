@@ -29,8 +29,21 @@ export async function renderEvents(main, ctx) {
     if (more.length) { events = events.concat(more); last = more[more.length - 1].id; }
     draw();
   };
+  const auditBody = h('tbody', { 'data-testid': 'audit-body' });
+  main.append(h('h2', {}, 'Changes made through Switchyard'),
+    h('div', { class: 'card table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ...['Time', 'Who', 'Action', 'Switch'].map((t) => h('th', {}, t)))), auditBody)));
+  const drawAudit = async () => {
+    const { entries } = await get('/audit?limit=100');
+    clear(auditBody);
+    if (!entries.length) auditBody.append(h('tr', {}, h('td', { colspan: '4', class: 'muted', 'data-testid': 'audit-empty' }, 'No changes yet.')));
+    for (const e of entries) {
+      auditBody.append(h('tr', { 'data-testid': 'audit-row' }, h('td', {}, new Date(e.time * 1000).toLocaleString()), h('td', {}, e.role),
+        h('td', { class: 'mono' }, `${e.method} ${e.route.replace('/api/devices/{mac}', '')}`), h('td', { class: 'mono' }, e.switch || '–')));
+    }
+  };
+  await drawAudit();
   filter.addEventListener('change', draw);
   await fetchMore();
-  const timer = setInterval(() => fetchMore().catch(() => {}), 4000);
+  const timer = setInterval(() => { fetchMore().catch(() => {}); drawAudit().catch(() => {}); }, 4000);
   ctx.onCleanup(() => clearInterval(timer));
 }

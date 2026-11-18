@@ -6,6 +6,7 @@ import hmac
 import ipaddress
 import logging
 import re
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -26,9 +27,11 @@ from ..nsdp.netif import list_interfaces
 from ..nsdp.packet import format_mac
 from ..sim import Simulator, demo_switches
 from ..store import Store
+from .audit import Audit
 from .auth import COOKIE, Auth
 
 log = logging.getLogger(__name__)
+VIEWER_MAY_POST = {"/api/logout", "/api/discovery/scan"}
 MAC_PATH = re.compile(r"^(/api/devices/)([0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5})(/.*)?$")
 STATIC = Path(__file__).parent / "static"
 
@@ -183,6 +186,7 @@ def create_app(config: Config) -> FastAPI:
         config["auth.password"],
         config["auth.disabled"],
         config["auth.session_hours"],
+        config["auth.viewer_password"],
     )
 
     @asynccontextmanager
@@ -219,11 +223,13 @@ def create_app(config: Config) -> FastAPI:
         title="Switchyard",
         version=__version__,
         lifespan=lifespan,
-        docs_url="/api/docs",
+        docs_url=None,
         openapi_url="/api/openapi.json",
         redoc_url=None,
     )
+    audit = Audit(config.data_dir / "audit.log")
     app.state.auth = auth
+    app.state.audit = audit
     app.state.simulator = simulator
     app.state.config = config
 
@@ -256,15 +262,38 @@ def create_app(config: Config) -> FastAPI:
                     return error(403, "bad_origin", "Cross-site request refused.")
             if path not in open_paths and not auth.valid(request.cookies.get(COOKIE)):
                 return error(401, "login_required", "Please log in.")
+            if (
+                request.method not in ("GET", "HEAD", "OPTIONS")
+                and path not in open_paths
+                and path not in VIEWER_MAY_POST
+                and not path.endswith(("/diff", "/firmware/check"))
+                and auth.role(request.cookies.get(COOKIE)) != "admin"
+            ):
+                return error(403, "read_only", "This login is read-only.")
         response = await call_next(request)
+        if (
+            path.startswith("/api/")
+            and request.method not in ("GET", "HEAD", "OPTIONS")
+            and response.status_code < 400
+            and path not in open_paths | VIEWER_MAY_POST
+            and not path.endswith(("/diff", "/firmware/check"))
+        ):
+            route = request.scope.get("route")
+            mac = request.path_params.get("mac") if request.path_params else None
+            audit.record(
+                auth.role(request.cookies.get(COOKIE)) or "?",
+                request.method,
+                getattr(route, "path", path),
+                mac,
+                response.status_code,
+            )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
-        if not path.startswith("/api/docs"):
-            response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; "
-                "base-uri 'none'; form-action 'self'"
-            )
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; "
+            "base-uri 'none'; form-action 'self'"
+        )
         if path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
         return response
@@ -314,6 +343,7 @@ def create_app(config: Config) -> FastAPI:
     def session(request: Request):
         return {
             "authenticated": auth.valid(request.cookies.get(COOKIE)),
+            "role": auth.role(request.cookies.get(COOKIE)),
             "auth_disabled": auth.disabled,
             "demo": simulator is not None,
             "version": __version__,
@@ -332,7 +362,7 @@ def create_app(config: Config) -> FastAPI:
             )
         if token is None:
             return error(401, "bad_password", "Wrong password.")
-        response = JSONResponse({"authenticated": True})
+        response = JSONResponse({"authenticated": True, "role": auth.role(token)})
         response.set_cookie(
             COOKIE,
             token,
@@ -400,6 +430,27 @@ def create_app(config: Config) -> FastAPI:
         m = manager()
         m.device(mac)
         return m.monitor.history(mac, min(max(minutes, 1), 24 * 60))
+
+    @api.get("/devices/{mac}/history.csv")
+    def history_csv(mac: str, minutes: float = 60):
+        m = manager()
+        m.device(mac)
+        data = m.monitor.history(mac, min(max(minutes, 1), 24 * 60))
+        lines = ["time,port,received_bit_per_s,sent_bit_per_s"]
+        for port, points in sorted(data["series"].items()):
+            for t, rx, tx in points:
+                iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+                lines.append(f"{iso},{'all' if port == 0 else port},{rx:.0f},{tx:.0f}")
+        name = f"switchyard-history-{mac.replace(':', '')}.csv"
+        return PlainTextResponse(
+            "\n".join(lines) + "\n",
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        )
+
+    @api.get("/audit")
+    def audit_log(limit: int = 100):
+        return {"entries": audit.tail(min(max(limit, 1), 1000))}
 
     @api.get("/meta")
     def meta():

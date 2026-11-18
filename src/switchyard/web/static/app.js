@@ -108,7 +108,7 @@ async function render() {
       h('a', { href, 'aria-current': route.name === key || (key === 'home' && route.name === 'switch') ? 'page' : null, 'data-testid': `nav-${key}` }, text),
     ),
   );
-  const actions = h('div', { class: 'topbar-actions' }, themeToggle());
+  const actions = h('div', { class: 'topbar-actions' }, session.role === 'viewer' ? h('span', { class: 'tag', 'data-testid': 'readonly-badge', title: 'This login cannot change anything' }, 'Read-only') : null, themeToggle());
   if (!session.auth_disabled) {
     actions.append(
       h('button', { class: 'btn small', 'data-testid': 'logout', onclick: async () => {

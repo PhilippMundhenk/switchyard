@@ -11,8 +11,10 @@ The data folder is `/data` in the container, `./data` otherwise, or `--data DIR`
 | --- | --- | --- | --- |
 | `server.host` | `SWITCHYARD_SERVER_HOST` | `"0.0.0.0"` | Address the web interface listens on. |
 | `server.port` | `SWITCHYARD_SERVER_PORT` | `8080` | Port of the web interface. |
+| `server.forwarded_allow_ips` | `SWITCHYARD_SERVER_FORWARDED_ALLOW_IPS` | `"127.0.0.1"` | Addresses of reverse proxies whose X-Forwarded-* headers are trusted (comma separated, or * for all). Needed for the secure cookie flag behind a TLS proxy. |
 | `auth.password` | `SWITCHYARD_AUTH_PASSWORD` | `""` | Password for the web interface. Empty: a random one is generated on first start, printed once to the log and stored hashed in the data folder. |
 | `auth.disabled` | `SWITCHYARD_AUTH_DISABLED` | `false` | true = no login at all. Only for trusted networks or behind a proxy that authenticates. |
+| `auth.viewer_password` | `SWITCHYARD_AUTH_VIEWER_PASSWORD` | `""` | Optional second password for a read-only login: it can see everything but change nothing. |
 | `auth.session_hours` | `SWITCHYARD_AUTH_SESSION_HOURS` | `24` | How long a login stays valid. |
 | `nsdp.interfaces` | `SWITCHYARD_NSDP_INTERFACES` | `[]` | Network interfaces to search for switches, e.g. ["eth0"]. Empty: all. |
 | `nsdp.targets` | `SWITCHYARD_NSDP_TARGETS` | `[]` | Send to these addresses instead of broadcasting, e.g. ["192.168.5.255", "10.0.0.7:63322"]. For routed networks. |
@@ -37,6 +39,7 @@ The data folder is `/data` in the container, `./data` otherwise, or `--data DIR`
 | `switchyard.toml` | This configuration. |
 | `devices.json` | The switches you manage: label, notes, fixed address, last seen info, and the switch password if you ticked "remember". Mode 0600. |
 | `backups/<mac>/*.json` | Automatic configuration backups (mode 0600). No passwords inside. |
+| `audit.log` | One JSON line per successful change: time, role, route, switch. Mode 0600. |
 | `secrets.json` | Hash of the generated web password (scrypt). Mode 0600. Only used when `auth.password` is empty. |
 
 Back up the folder to keep your list of switches. Treat `devices.json` as a secret.

@@ -29,6 +29,7 @@ class LiveServer:
             **os.environ,
             "SWITCHYARD_DEMO_ENABLED": "true",
             "SWITCHYARD_AUTH_PASSWORD": PASSWORD,
+            "SWITCHYARD_AUTH_VIEWER_PASSWORD": "e2e-viewer-1",
             "SWITCHYARD_SERVER_HOST": "127.0.0.1",
             "SWITCHYARD_SERVER_PORT": str(self.port),
             "SWITCHYARD_NSDP_POLL_SECONDS": "0",

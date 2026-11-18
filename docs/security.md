@@ -6,6 +6,8 @@
   `SameSite=Strict`, `Secure` over HTTPS). Five wrong logins lock login for a minute. Every
   `/api` route except login, session and health needs a session; a test enumerates all routes
   to prove it.
+- **Read-only login.** `auth.viewer_password` adds a second password that can read everything but is refused (403) on every route that changes something. A test walks the whole OpenAPI route list, so a new write route is closed to viewers by default.
+- **Audit log.** Every successful change is appended to `data/audit.log` (time, role, route, switch; mode 0600; never the request body) and shown on the *Events* page.
 - **Cross-site requests.** Write requests with an `Origin` that differs from `Host` are refused.
 - **Browser hardening.** Strict content security policy (no inline script), `X-Frame-Options:
   DENY`, `nosniff`, no referrer. All text from switches and users is inserted as text.
@@ -14,6 +16,7 @@
   only when you tick "remember". Backups, uploaded or stored, contain no passwords; stored backup names are validated, so a request cannot reach other files. The protocol log blanks
   credentials.
 - **Outbound connections.** Switchyard talks to the switches and, only if you set `notify.webhook_url`, POSTs event messages (switch name, MAC, port text) to that URL. Nothing else leaves the machine.
+- **No third-party requests.** The web interface loads nothing from other hosts (no fonts, scripts or API docs page from a CDN); the OpenAPI description is served as JSON only.
 - **Metrics.** `/metrics` needs a web session or the bearer token from `metrics.token`; it reveals MAC addresses, names and port counters.
 
 ## What it cannot protect

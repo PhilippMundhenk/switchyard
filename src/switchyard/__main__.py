@@ -27,6 +27,7 @@ def _serve(args) -> int:
         host=config["server.host"],
         port=config["server.port"],
         log_level=config["log.level"],
+        forwarded_allow_ips=config["server.forwarded_allow_ips"],
     )
     return 0
 

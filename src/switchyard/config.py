@@ -14,6 +14,13 @@ SCHEMA: list[tuple[str, str, object, str]] = [
     ("server", "host", "0.0.0.0", "Address the web interface listens on."),
     ("server", "port", 8080, "Port of the web interface."),
     (
+        "server",
+        "forwarded_allow_ips",
+        "127.0.0.1",
+        "Addresses of reverse proxies whose X-Forwarded-* headers are trusted (comma\n"
+        "# separated, or * for all). Needed for the secure cookie flag behind a TLS proxy.",
+    ),
+    (
         "auth",
         "password",
         "",
@@ -26,6 +33,12 @@ SCHEMA: list[tuple[str, str, object, str]] = [
         False,
         "true = no login at all. Only for trusted networks or behind a proxy\n"
         "# that authenticates.",
+    ),
+    (
+        "auth",
+        "viewer_password",
+        "",
+        "Optional second password for a read-only login: it can see everything but change nothing.",
     ),
     ("auth", "session_hours", 24, "How long a login stays valid."),
     (

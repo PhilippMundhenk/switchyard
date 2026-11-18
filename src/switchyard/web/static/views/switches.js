@@ -53,15 +53,30 @@ export async function renderSwitches(main, ctx) {
   let devices = [];
   let found = [];
   let scanning = false;
+  const summary = h('div', { class: 'summary', 'data-testid': 'summary' });
+  let eventCount = 0;
   const managed = h('div', { class: 'grid', 'data-testid': 'managed' });
   const foundBox = h('div', { 'data-testid': 'found' });
   const head = h('div', { class: 'page-head' }, h('h1', {}, 'Switches'));
   const scanBtn = h('button', { class: 'btn primary', 'data-testid': 'scan' }, 'Search network');
   const ipBtn = h('button', { class: 'btn', 'data-testid': 'add-by-ip' }, 'Add by IP address');
   head.append(ipBtn, scanBtn);
-  main.append(head, managed, foundBox);
+  main.append(head, summary, managed, foundBox);
+
+  function drawSummary() {
+    clear(summary);
+    if (!devices.length) return;
+    const online = devices.filter((d) => d.online).length;
+    const withPorts = devices.filter((d) => d.ports);
+    const up = withPorts.reduce((n, d) => n + d.ports.filter((p) => p.up).length, 0);
+    const total = withPorts.reduce((n, d) => n + d.ports.length, 0);
+    for (const [value, label, testid] of [[`${online} / ${devices.length}`, 'switches online', 'sum-online'], [total ? `${up} / ${total}` : '–', 'ports up', 'sum-ports'], [String(eventCount), 'events in 24 h', 'sum-events']]) {
+      summary.append(h('div', { class: 'tile', 'data-testid': testid }, h('b', {}, value), h('span', { class: 'muted' }, label)));
+    }
+  }
 
   function drawManaged() {
+    drawSummary();
     clear(managed);
     if (!devices.length) {
       managed.className = '';
@@ -101,6 +116,10 @@ export async function renderSwitches(main, ctx) {
   async function refresh() {
     devices = (await get('/devices')).devices;
     found = (await get('/discovery')).found;
+    try {
+      const since = Date.now() / 1000 - 86400;
+      eventCount = (await get('/events')).events.filter((e) => e.time > since).length;
+    } catch (err) { eventCount = 0; }
     drawManaged();
     drawFound();
   }

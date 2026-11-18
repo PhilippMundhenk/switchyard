@@ -144,7 +144,9 @@ async function ports(host, S) {
   };
   which.addEventListener('change', () => drawHistory().catch(showError));
   range.addEventListener('change', () => drawHistory().catch(showError));
-  host.append(section('Traffic history', h('div', { class: 'row' }, which, range), chartBox));
+  const csv = h('a', { class: 'btn small', 'data-testid': 'chart-csv', href: `/api${dev(S.mac)}/history.csv?minutes=60`, download: 'history.csv' }, 'Download CSV');
+  range.addEventListener('change', () => { csv.href = `/api${dev(S.mac)}/history.csv?minutes=${range.value}`; });
+  host.append(section('Traffic history', h('div', { class: 'row' }, which, range, csv), chartBox));
   await drawHistory().catch(() => {});
   poll(S, drawHistory, 10000);
 }
@@ -158,7 +160,7 @@ async function vlan(host, S) {
   const apply = applier(S);
   const n = S.state.info.ports;
   const allPorts = Array.from({ length: n }, (_, i) => i + 1);
-  const modeSel = select(Object.entries(MODE_LABELS), v.mode, { 'data-testid': 'vlan-mode' });
+  const modeSel = select(Object.entries(MODE_LABELS), v.mode, { 'aria-label': 'VLAN mode', 'data-testid': 'vlan-mode' });
   const modeBtn = h('button', { class: 'btn', 'data-testid': 'vlan-mode-apply' }, 'Change mode');
   modeBtn.addEventListener('click', async () => {
     if (modeSel.value === v.mode) return;

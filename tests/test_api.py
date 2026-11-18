@@ -404,7 +404,11 @@ def test_system_meta_health_static(client):
     assert client.get("/health").json()["status"] == "ok"
     assert client.get("/api/health").json()["demo"] is False
     assert client.get("/style.css").status_code == 200
-    assert client.get("/api/docs").status_code in (200, 401)
+    assert client.get("/api/docs").status_code == 404  # no Swagger UI: it would load from a CDN
+    assert client.get("/api/openapi.json").json()["info"]["title"] == "Switchyard"
+    assert (
+        "default-src 'self'" in client.get("/api/openapi.json").headers["content-security-policy"]
+    )
 
 
 def test_demo_mode_starts_its_own_switches(tmp_path):
@@ -625,3 +629,96 @@ def test_labels_are_stored_shown_and_backed_up(client, office):
     r = client.post(f"{D}/restore", json={"backup": data})
     assert r.json()["ok"] and client.get(f"{D}").json()["port_labels"]["1"] == "NAS"
     assert client.put("/api/devices/aa:bb:cc:dd:ee:ff/labels", json={}).status_code == 404
+
+
+def test_viewer_login_is_read_only(tmp_path, sim):
+    env = make_env(sim.port, sim.tftp_port, SWITCHYARD_AUTH_VIEWER_PASSWORD="viewer-pass-1")
+    with TestClient(create_app(cfg.load(tmp_path, env=env))) as admin:
+        admin.post("/api/login", json={"password": PASSWORD})
+        admin.post("/api/discovery/scan")
+        admin.post("/api/devices", json={"mac": MAC, "password": "password"})
+        assert admin.get("/api/session").json()["role"] == "admin"
+    with TestClient(create_app(cfg.load(tmp_path, env=env))) as v:
+        assert v.post("/api/login", json={"password": "viewer-pass-1"}).json()["role"] == "viewer"
+        assert v.get("/api/session").json()["role"] == "viewer"
+        assert v.get("/api/devices").status_code == 200
+        assert v.get(f"{D}/state").status_code == 200
+        assert v.get(f"{D}/backup").status_code == 200
+        assert v.post("/api/discovery/scan").status_code == 200
+        diff = v.post(f"{D}/diff", json={"backup": v.get(f"{D}/backup").json()})
+        assert diff.status_code == 200
+        for method, path, body in [
+            ("PUT", f"{D}/loop-detection", {"enabled": True}),
+            ("POST", f"{D}/reboot", {"confirm": MAC}),
+            ("POST", f"{D}/backups", {}),
+            ("PATCH", D, {"label": "x"}),
+            ("DELETE", D, None),
+            ("POST", "/api/devices", {"mac": MAC}),
+            ("POST", f"{D}/login", {"password": "password"}),
+            ("POST", "/api/password", {"current": "a", "new": "b" * 9}),
+            ("POST", f"{D}/firmware?confirm={MAC}", None),
+        ]:
+            r = v.request(method, path, json=body)
+            assert r.status_code == 403 and r.json()["code"] == "read_only", (method, path)
+        assert v.post("/api/logout").status_code == 200
+    # the switch was not touched and a wrong password still fails
+    assert sim.switches[0].loop_detection is False
+    with TestClient(create_app(cfg.load(tmp_path, env=env))) as c:
+        assert c.post("/api/login", json={"password": "nope"}).status_code == 401
+
+
+def test_audit_log_records_changes_without_bodies(client, office):
+    client.put(f"{D}/loop-detection", json={"enabled": True})
+    client.put(f"{D}/network", json={"name": "secret-name-xyz"})
+    client.put(f"{D}/qos", json={"ingress": {"2": 99}})  # refused: not logged
+    client.get(f"{D}/state")  # reads are not logged
+    entries = client.get("/api/audit").json()["entries"]
+    routes = [(e["method"], e["route"]) for e in entries]
+    assert ("PUT", "/api/devices/{mac}/network") in routes and (
+        "PUT",
+        "/api/devices/{mac}/loop-detection",
+    ) in routes
+    assert not any(r[1].endswith("/qos") for r in routes)
+    assert all(e["role"] == "admin" and e["status"] < 400 for e in entries)
+    assert entries[0]["route"].endswith("/loop-detection") or entries[0]["route"].endswith(
+        "/network"
+    )
+    assert any(e["switch"] == MAC for e in entries)
+    raw = (client.app_.state.config.data_dir / "audit.log").read_text()
+    assert "secret-name-xyz" not in raw and "password" not in raw.lower()
+    assert stat.S_IMODE((client.app_.state.config.data_dir / "audit.log").stat().st_mode) == 0o600
+    assert client.get("/api/audit?limit=1").json()["entries"].__len__() == 1
+
+
+def test_audit_tail_survives_a_torn_line(tmp_path):
+    from switchyard.web.audit import Audit
+
+    a = Audit(tmp_path / "a.log")
+    assert a.tail() == []
+    a.record("admin", "PUT", "/x", None, 200)
+    with a.path.open("a") as f:
+        f.write('{"time": 1, "ro')
+    assert len(a.tail()) == 1
+
+
+def test_every_write_route_is_closed_to_viewers(tmp_path, sim):
+    """New routes must be refused for the read-only login unless they are listed as harmless."""
+    env = make_env(sim.port, sim.tftp_port, SWITCHYARD_AUTH_VIEWER_PASSWORD="viewer-pass-1")
+    app = create_app(cfg.load(tmp_path, env=env))
+    allowed = {
+        "/api/login",
+        "/api/logout",
+        "/api/discovery/scan",
+        "/api/devices/{mac}/diff",
+        "/api/devices/{mac}/firmware/check",
+    }
+    with TestClient(app) as v:
+        v.post("/api/login", json={"password": "viewer-pass-1"})
+        for route, methods in app.openapi()["paths"].items():
+            for method in methods:
+                if method.upper() == "GET" or route in allowed:
+                    continue
+                r = v.request(
+                    method.upper(), route.replace("{mac}", MAC).replace("{name}", "x"), json={}
+                )
+                assert r.status_code == 403, (method, route, r.status_code)

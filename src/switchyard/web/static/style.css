@@ -156,3 +156,6 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
 .tag.link_down, .tag.offline { color: var(--danger); border-color: var(--danger); }
 .tag.link_up, .tag.online { color: var(--ok); border-color: var(--ok); }
 .portlabel { display: block; max-width: 54px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 16px; display: flex; flex-direction: column; min-width: 130px; }
+.tile b { font-size: 1.4rem; }

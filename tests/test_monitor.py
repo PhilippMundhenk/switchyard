@@ -159,3 +159,18 @@ def test_webhook_receives_events(tmp_path, sim, hook_server):
 async def test_webhook_failures_do_not_raise():
     assert await post_json("http://127.0.0.1:9/none", {"a": 1}) is False
     assert await post_json("file:///etc/passwd", {"a": 1}) is False
+
+
+def test_history_csv(client, office):
+    sample(client)
+    time.sleep(0.2)
+    sample(client)
+    r = client.get(f"{D}/history.csv?minutes=5")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
+    assert "attachment" in r.headers["content-disposition"]
+    lines = r.text.strip().splitlines()
+    assert lines[0] == "time,port,received_bit_per_s,sent_bit_per_s"
+    assert any(",all," in line for line in lines[1:]) and any(",1," in line for line in lines[1:])
+    first = lines[1].split(",")
+    assert first[0].endswith("Z") and float(first[2]) >= 0
+    assert client.get("/api/devices/aa:bb:cc:dd:ee:ff/history.csv").status_code == 404

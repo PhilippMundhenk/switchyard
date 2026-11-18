@@ -11,7 +11,7 @@ export async function renderSettings(main, ctx, session) {
     section('System', h('dl', { class: 'kv', 'data-testid': 'system' }, ...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))])),
       h('h3', {}, 'Network interfaces found'),
       sys.interfaces.length ? h('ul', {}, ...sys.interfaces.map((i) => h('li', {}, `${i.name}: ${i.ip} (${i.mac})`))) : h('p', { class: 'muted' }, 'None. Is the container using host networking?'),
-      h('p', {}, h('a', { href: '/api/docs', target: '_blank', rel: 'noopener' }, 'API documentation'))));
+      h('p', {}, h('a', { href: '/api/openapi.json', target: '_blank', rel: 'noopener' }, 'API description (OpenAPI JSON)'))));
   if (sys.auth_disabled || sys.password_from_config) {
     main.append(section('Web interface password', h('p', { class: 'muted' }, sys.auth_disabled ? 'Login is disabled in the configuration.' : 'The password is set in the configuration file or environment. Change it there.')));
     return;

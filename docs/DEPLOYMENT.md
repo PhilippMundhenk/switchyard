@@ -53,3 +53,29 @@ blocks the first; unicast to a known address works across routers.
 
 Switchyard speaks plain HTTP. Put a reverse proxy in front for TLS. Forward the `Host` header
 unchanged: the origin check compares it with the `Origin` header of write requests.
+
+### Examples
+
+Caddy:
+
+```
+switchyard.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+nginx (inside a `server` block with TLS):
+
+```
+location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 16m;   # firmware images
+}
+```
+
+The proxy must be listed in `server.forwarded_allow_ips` (default `127.0.0.1`), otherwise the
+forwarded scheme is ignored and the session cookie lacks the `Secure` flag. Traefik: the same
+headers are sent by default.

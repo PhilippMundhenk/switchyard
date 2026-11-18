@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import expect
@@ -461,3 +462,112 @@ def test_compare_an_uploaded_file(app, tmp_path):
     app.get_by_test_id("restore-file").set_input_files(str(path))
     app.get_by_test_id("compare-file").click()
     expect(app.get_by_test_id("diff-list")).to_contain_text("name: office → other-name")
+
+
+A11Y_CHECK = (Path(__file__).parent / "a11y.js").read_text()
+
+
+def test_every_page_is_accessible_by_name(app):
+    add_switch(app, MAC, "password")
+    add_switch(app, "e0:91:f5:cc:30:03", "password")
+    api(app, "PUT", f"/devices/{MAC}/vlan/mode", {"mode": "dot1q_advanced"})
+    tabs = [
+        "overview",
+        "network",
+        "ports",
+        "vlan",
+        "qos",
+        "features",
+        "ports-config",
+        "lag",
+        "cable",
+    ]
+    tabs += ["firmware", "maintenance"]
+    pages = ["#/", "#/events", "#/log", "#/settings"]
+    pages += [f"#/switch/{MAC}/{t}" for t in tabs]
+    pages += [
+        f"#/switch/e0:91:f5:cc:30:03/{t}" for t in ("features", "vlan", "ports-config", "lag")
+    ]
+    problems = {}
+    for page in pages:
+        app.goto(app.server.url + "/" + page)
+        app.reload()
+        app.wait_for_selector("main h1", state="attached")
+        app.wait_for_timeout(300)
+        found = app.evaluate(A11Y_CHECK)
+        if found:
+            problems[page] = found
+    assert problems == {}
+
+
+def test_dialogs_are_labelled_and_close_with_escape(app):
+    add_switch(app, MAC)
+    open_tab(app, "features")
+    app.get_by_test_id("loop-enabled").check()
+    app.get_by_test_id("loop-save").click()  # asks for the password
+    expect(app.get_by_role("dialog")).to_be_visible()
+    assert app.evaluate(A11Y_CHECK) == []
+    expect(app.get_by_test_id("switch-password")).to_be_focused()
+    app.keyboard.press("Escape")
+    expect(app.get_by_role("dialog")).to_have_count(0)
+    # keyboard operation of the VLAN matrix: focus a cell and press Enter
+    api(app, "POST", f"/devices/{MAC}/login", {"password": "password"})
+    api(app, "PUT", f"/devices/{MAC}/vlan/mode", {"mode": "dot1q_advanced"})
+    open_tab(app, "vlan")
+    app.get_by_test_id("new-vlan-id").fill("40")
+    app.get_by_test_id("new-vlan-id").press("Tab")
+    app.keyboard.press("Enter")
+    cell = app.get_by_test_id("cell-40-2")
+    cell.focus()
+    app.keyboard.press("Enter")
+    expect(cell).to_have_attribute("data-state", "U")
+
+
+def test_dashboard_summary_and_csv_download(app):
+    add_switch(app, MAC, "password")
+    add_switch(app, "e0:91:f5:cc:30:03", "password")
+    app.goto(app.server.url + "/#/")
+    app.reload()
+    expect(app.get_by_test_id("sum-online")).to_contain_text("2 / 2")
+    expect(app.get_by_test_id("sum-ports")).to_contain_text("/ 13", timeout=30000)  # 8 + 5 ports
+    expect(app.get_by_test_id("sum-events")).to_be_visible()
+    open_tab(app, "ports")
+    with app.expect_download(timeout=30000) as dl:
+        app.wait_for_timeout(3000)  # let the monitor take two samples
+        app.get_by_test_id("chart-csv").click()
+    assert dl.value.suggested_filename.endswith(".csv")
+
+
+def test_viewer_sees_everything_but_cannot_change(page, server):
+    page.set_default_timeout(15000)
+    admin_ctx = page.context.browser.new_context()
+    admin = admin_ctx.new_page()
+    admin.set_default_timeout(15000)
+    admin.goto(server.url)
+    admin.get_by_test_id("login-password").fill(PASSWORD)
+    admin.get_by_test_id("login-submit").click()
+    admin.get_by_test_id("scan").wait_for()
+    admin.server = server
+    add_switch(admin, MAC, "password")
+    admin_ctx.close()
+    page.goto(server.url)
+    page.get_by_test_id("login-password").fill("e2e-viewer-1")
+    page.get_by_test_id("login-submit").click()
+    expect(page.get_by_test_id("readonly-badge")).to_be_visible()
+    expect(page.get_by_test_id("switch-card")).to_have_count(1)
+    page.server = server
+    open_tab(page, "features")
+    page.get_by_test_id("loop-enabled").check()
+    page.get_by_test_id("loop-save").click()
+    expect(page.locator(".toast").last).to_contain_text("read-only")
+    r = api(page, "GET", f"/devices/{MAC}/state")
+    assert r.ok and r.json()["loop_detection"] is False
+
+
+def test_audit_log_lists_changes_on_the_events_page(app):
+    add_switch(app, MAC, "password")
+    api(app, "PUT", f"/devices/{MAC}/loop-detection", {"enabled": True})
+    app.get_by_test_id("nav-events").click()
+    expect(app.get_by_test_id("audit-row").first).to_be_visible()
+    expect(app.get_by_test_id("audit-body")).to_contain_text("PUT /loop-detection")
+    expect(app.get_by_test_id("audit-body")).to_contain_text("admin")
