@@ -412,3 +412,19 @@ def test_metrics_with_the_session(app):
     app.wait_for_timeout(2500)
     r = app.request.get(app.server.url + "/metrics")
     assert r.ok and "switchyard_port_up" in r.text()
+
+
+def test_port_and_vlan_names_show_up(app):
+    add_switch(app, MAC, "password")
+    api(app, "PUT", f"/devices/{MAC}/vlan/mode", {"mode": "dot1q_advanced"})
+    open_tab(app, "maintenance")
+    app.get_by_test_id("label-port-1").fill("NAS")
+    app.get_by_test_id("label-vlan-1").fill("Default")
+    app.get_by_test_id("labels-save").click()
+    expect(app.locator(".toast").last).to_contain_text("Names saved")
+    open_tab(app, "overview")
+    expect(app.get_by_test_id("portlabel-1")).to_have_text("NAS")
+    open_tab(app, "vlan")
+    expect(app.get_by_test_id("vlan-row-1")).to_contain_text("Default")
+    open_tab(app, "ports")
+    expect(app.get_by_test_id("stat-1")).to_contain_text("NAS")

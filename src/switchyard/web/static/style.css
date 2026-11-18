@@ -155,3 +155,4 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
 .event-row td:first-child { white-space: nowrap; color: var(--muted); }
 .tag.link_down, .tag.offline { color: var(--danger); border-color: var(--danger); }
 .tag.link_up, .tag.online { color: var(--ok); border-color: var(--ok); }
+.portlabel { display: block; max-width: 54px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }

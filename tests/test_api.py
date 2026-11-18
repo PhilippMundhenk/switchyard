@@ -601,3 +601,27 @@ def test_firmware_too_large(client, office):
         content=b"x" * 10,
         headers={"content-length": str(mgr.MAX_FIRMWARE_BYTES + 1)},
     ).status_code in (413, 422, 400)
+
+
+def test_labels_are_stored_shown_and_backed_up(client, office):
+    r = client.put(
+        f"{D}/labels",
+        json={"ports": {"1": " NAS ", "2": "", "3": "x" * 50}, "vlans": {"10": "IoT"}},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["port_labels"] == {"1": "NAS", "3": "x" * 30} and body["vlan_names"] == {
+        "10": "IoT"
+    }
+    assert client.get(f"{D}/state").json()["device"]["port_labels"]["1"] == "NAS"
+    assert client.get("/api/devices").json()["devices"][0]["vlan_names"] == {"10": "IoT"}
+    for bad in ({"ports": {"0": "x"}}, {"ports": {"99": "x"}}, {"vlans": {"5000": "x"}}):
+        assert client.put(f"{D}/labels", json=bad).status_code == 422
+    assert client.put(f"{D}/labels", json={"ports": {"x": "y"}}).status_code == 422
+    data = client.get(f"{D}/backup").json()
+    assert data["config"]["labels"]["ports"]["1"] == "NAS"
+    client.put(f"{D}/labels", json={})
+    assert client.get(f"{D}").json()["port_labels"] == {}
+    r = client.post(f"{D}/restore", json={"backup": data})
+    assert r.json()["ok"] and client.get(f"{D}").json()["port_labels"]["1"] == "NAS"
+    assert client.put("/api/devices/aa:bb:cc:dd:ee:ff/labels", json={}).status_code == 404

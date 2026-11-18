@@ -126,6 +126,8 @@ class Manager:
             "last_seen": last_seen,
             "info": device.get("info", {}),
             "ports": self.monitor.snapshot(mac),
+            "port_labels": device.get("port_labels", {}),
+            "vlan_names": device.get("vlan_names", {}),
         }
 
     def devices(self) -> list[dict]:
@@ -196,6 +198,15 @@ class Manager:
         self.store.update(device["mac"], **changes)
         return self.view(self.device(mac))
 
+    def set_labels(self, mac: str, ports: dict[int, str], vlans: dict[int, str]) -> dict:
+        """Local names for ports and VLANs (kept in devices.json, not on the switch)."""
+        self.device(mac)
+        clean = {
+            "port_labels": {str(p): t.strip()[:30] for p, t in ports.items() if t.strip()},
+            "vlan_names": {str(v): t.strip()[:30] for v, t in vlans.items() if t.strip()},
+        }
+        return self.view(self.store.update(mac, **clean))
+
     def remove(self, mac: str) -> None:
         self.device(mac)
         self.clients.pop(mac, None)
@@ -243,6 +254,10 @@ class Manager:
                 "loop_detection": state["loop_detection"],
                 "lag": state["lag"],
                 "port_admin": state["port_admin"],
+                "labels": {
+                    "ports": self.device(mac).get("port_labels", {}),
+                    "vlans": self.device(mac).get("vlan_names", {}),
+                },
             },
         }
 
@@ -274,6 +289,12 @@ class Manager:
         def ints(table: dict | None) -> dict:
             return {int(k): v for k, v in (table or {}).items()}
 
+        labels = config.get("labels")
+        if labels:
+            ports = {int(k): v for k, v in labels.get("ports", {}).items()}
+            vlans = {int(k): v for k, v in labels.get("vlans", {}).items()}
+            self.set_labels(mac, ports, vlans)
+            steps.append({"step": "Port and VLAN names", "ok": True})
         admin = config.get("port_admin")
         if admin:
             await step(

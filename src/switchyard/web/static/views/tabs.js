@@ -4,12 +4,14 @@ import { clear, download, fmtBytes, fmtLimit, fmtRate, h, portList, validateDot1
 import { drawChart } from './chart.js';
 import { confirmDialog, field, modal, run, section, select, showError, toast, unsupported, withSwitchAuth } from '../ui.js';
 
+const portName = (S, p) => (S.state.device.port_labels || {})[p] || '';
+const vlanName = (S, id) => (S.state.device.vlan_names || {})[id] || '';
 const speedClass = (p) => (p.up ? `s${Math.min(p.speed_mbps || 10, 10000)}` : 'down');
 
-function portPanel(ports) {
+function portPanel(ports, labels = {}) {
   const wrap = h('div', {}, h('div', { class: 'ports', 'data-testid': 'port-panel' },
-    ...ports.map((p) => h('div', { class: `port ${p.up ? 'up' : 'down'} ${speedClass(p)}`, title: `Port ${p.port}: ${p.link || 'unknown'}`, 'data-testid': `port-${p.port}` },
-      h('div', { class: 'jack' }, String(p.port)), h('span', {}, p.up ? `${p.speed_mbps >= 1000 ? p.speed_mbps / 1000 + 'G' : p.speed_mbps + 'M'}` : 'down')))),
+    ...ports.map((p) => h('div', { class: `port ${p.up ? 'up' : 'down'} ${speedClass(p)}`, title: `Port ${p.port}${labels[p.port] ? ` (${labels[p.port]})` : ''}: ${p.link || 'unknown'}`, 'data-testid': `port-${p.port}` },
+      h('div', { class: 'jack' }, String(p.port)), h('span', {}, p.up ? `${p.speed_mbps >= 1000 ? p.speed_mbps / 1000 + 'G' : p.speed_mbps + 'M'}` : 'down'), labels[p.port] ? h('small', { class: 'portlabel', 'data-testid': `portlabel-${p.port}` }, labels[p.port]) : null))),
     h('div', { class: 'legend' }, ...[['s10', '10 Mbit/s'], ['s100', '100 Mbit/s'], ['s1000', '1 Gbit/s'], ['s10000', '10 Gbit/s']].map(([c, t]) =>
       h('span', {}, h('i', { class: c }), t))));
   return wrap;
@@ -42,7 +44,7 @@ function poll(S, fn, ms) {
 // ---------------------------------------------------------------- overview
 async function overview(host, S) {
   const { info } = S.state;
-  const panel = h('div', { 'data-testid': 'ports-box' }, portPanel(S.state.ports));
+  const panel = h('div', { 'data-testid': 'ports-box' }, portPanel(S.state.ports, S.state.device.port_labels));
   const note = h('p', { class: 'error', 'data-testid': 'ports-error', hidden: true }, 'The switch is not answering. Trying again…');
   host.append(
     section('Ports', panel, note),
@@ -55,7 +57,7 @@ async function overview(host, S) {
   poll(S, async () => {
     try {
       const { ports } = await get(`${dev(S.mac)}/ports`);
-      clear(panel).append(portPanel(ports));
+      clear(panel).append(portPanel(ports, S.state.device.port_labels));
       note.hidden = true;
     } catch (err) {
       note.hidden = false;
@@ -107,7 +109,7 @@ async function ports(host, S) {
       const dt = previous ? (t - previous.t) / 1000 : 0;
       const rate = (a, b) => (before && dt > 0 && a >= b ? (a - b) / dt : null);
       body.append(h('tr', { 'data-testid': `stat-${p.port}` },
-        h('td', {}, String(p.port)), h('td', {}, h('span', { class: `dot ${p.up ? 'online' : ''}` }), ' ', p.link || '–'),
+        h('td', {}, String(p.port), portName(S, p.port) ? h('small', { class: 'muted' }, ` ${portName(S, p.port)}`) : null), h('td', {}, h('span', { class: `dot ${p.up ? 'online' : ''}` }), ' ', p.link || '–'),
         h('td', {}, p.duplex || '–'),
         h('td', { class: 'num', title: `${p.rx_bytes} bytes` }, fmtBytes(p.rx_bytes)),
         h('td', { class: 'num' }, fmtRate(rate(p.rx_bytes, before && before.rx_bytes))),
@@ -228,7 +230,7 @@ async function vlan(host, S) {
       return h('td', {}, sel);
     };
     clear(matrixBox).append(h('table', { class: 'matrix' }, head(h('th', {}, '')),
-      h('tbody', {}, ...vlans.map((vl) => h('tr', { 'data-testid': `vlan-row-${vl.id}` }, h('td', {}, `VLAN ${vl.id}`), ...allPorts.map((p) => h('td', {}, cellOf(vl, p))),
+      h('tbody', {}, ...vlans.map((vl) => h('tr', { 'data-testid': `vlan-row-${vl.id}` }, h('td', {}, `VLAN ${vl.id}`, vlanName(S, vl.id) ? h('small', { class: 'muted' }, ` ${vlanName(S, vl.id)}`) : null), ...allPorts.map((p) => h('td', {}, cellOf(vl, p))),
         h('td', {}, vl.id === 1 ? null : h('button', { class: 'btn small ghost', 'aria-label': `Remove VLAN ${vl.id}`, 'data-testid': `remove-vlan-${vl.id}`,
           onclick: () => { vlans = vlans.filter((x) => x !== vl); for (const p of allPorts) if (pvid[p] === vl.id) pvid[p] = 1; draw(); } }, 'Remove')))),
         h('tr', { class: 'pvid-row' }, h('td', {}, h('b', {}, 'PVID')), ...allPorts.map(pvidCell), h('td', {})))));
@@ -583,9 +585,20 @@ async function maintenance(host, S) {
     download(`switchyard-${data.switch.model}-${S.mac.replace(/:/g, '')}.json`, JSON.stringify(data, null, 2));
   }));
 
+  const portIds = S.state.ports.map((p) => p.port);
+  const vlanIds = [...new Set([...(S.state.vlan ? S.state.vlan.dot1q.map((v) => v.id) : []), ...(S.state.vlan ? S.state.vlan.port_vlans.map((v) => v.id) : []), ...Object.keys(d.vlan_names || {}).map(Number)])].sort((a, b) => a - b);
+  const portInputs = Object.fromEntries(portIds.map((p) => [p, h('input', { type: 'text', maxlength: '30', value: (d.port_labels || {})[p] || '', 'aria-label': `Name of port ${p}`, 'data-testid': `label-port-${p}` })]));
+  const vlanInputs = Object.fromEntries(vlanIds.map((v) => [v, h('input', { type: 'text', maxlength: '30', value: (d.vlan_names || {})[v] || '', 'aria-label': `Name of VLAN ${v}`, 'data-testid': `label-vlan-${v}` })]));
+  const saveNames = h('button', { class: 'btn primary', 'data-testid': 'labels-save' }, 'Save names');
+  saveNames.addEventListener('click', () => run(saveNames, async () => {
+    await put(`${dev(S.mac)}/labels`, { ports: Object.fromEntries(portIds.map((p) => [p, portInputs[p].value])), vlans: Object.fromEntries(vlanIds.map((v) => [v, vlanInputs[v].value])) });
+    toast('Names saved.'); await S.reload();
+  }));
   host.append(
     section('This entry', field('Label', label), field('Notes', notes), field('Fixed address', address, 'Set this for a switch on another subnet; Switchyard then talks to it directly.'),
       h('div', { class: 'row' }, saveMeta, forget, remove)),
+    section('Port and VLAN names', h('p', { class: 'muted' }, 'Names are kept by Switchyard (not on the switch) and shown in the port panel, the tables and the editors.'),
+      h('div', { class: 'grid' }, ...portIds.map((p) => field(`Port ${p}`, portInputs[p])), ...vlanIds.map((v) => field(`VLAN ${v}`, vlanInputs[v]))), h('p', {}, saveNames)),
     section('Switch password', h('p', { class: 'muted' }, d.has_password ? 'A password is stored for this switch.' : 'No password is stored. You are asked when you change something.'),
       field('New password', newPw, '1 to 20 characters.'), h('p', {}, pwBtn)),
     section('Backup and restore', h('p', { class: 'muted' }, 'A backup holds VLANs, QoS, mirroring, IGMP and loop detection plus name and IP settings.'),

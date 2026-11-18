@@ -5,6 +5,7 @@ BIN = .venv/bin
 install:
 	python3 -m venv .venv && $(BIN)/pip install -e ".[dev]"
 lint:
+	$(PY) tools/check_js.py
 	$(BIN)/ruff check . && $(BIN)/ruff format --check .
 format:
 	$(BIN)/ruff format . && $(BIN)/ruff check --fix .

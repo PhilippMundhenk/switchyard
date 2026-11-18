@@ -140,6 +140,11 @@ class PortSettingsBody(BaseModel):
     ports: dict[int, PortSetting] = Field(min_length=1)
 
 
+class LabelsBody(BaseModel):
+    ports: dict[int, str] = {}
+    vlans: dict[int, str] = {}
+
+
 class FlagBody(BaseModel):
     enabled: bool
 
@@ -506,6 +511,12 @@ def create_app(config: Config) -> FastAPI:
             manager().client(mac).set_port_admin({p: x.model_dump() for p, x in body.ports.items()})
         )
         return ok("Port settings saved.")
+
+    @api.put("/devices/{mac}/labels")
+    def set_labels(mac: str, body: LabelsBody):
+        if any(not 1 <= p <= 64 for p in body.ports) or any(not 1 <= v <= 4093 for v in body.vlans):
+            raise ValueError("Port numbers are 1 to 64 and VLAN IDs 1 to 4093.")
+        return manager().set_labels(mac, body.ports, body.vlans)
 
     @api.put("/devices/{mac}/mirror")
     async def set_mirror(mac: str, body: MirrorBody):
