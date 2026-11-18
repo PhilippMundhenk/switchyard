@@ -55,6 +55,7 @@ def make_env(sim_port: int, tftp_port: int = 69, **extra) -> dict[str, str]:
         "SWITCHYARD_NSDP_CLIENT_PORT": "0",
         "SWITCHYARD_NSDP_TFTP_PORT": str(tftp_port),
         "SWITCHYARD_NSDP_POLL_SECONDS": "0",
+        "SWITCHYARD_MONITOR_INTERVAL_SECONDS": "0",
         "SWITCHYARD_NSDP_DISCOVERY_SECONDS": "0.3",
         "SWITCHYARD_AUTH_PASSWORD": PASSWORD,
     }

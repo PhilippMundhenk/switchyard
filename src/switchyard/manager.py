@@ -9,6 +9,7 @@ import logging
 import time
 
 from .config import Config
+from .monitor import Monitor
 from .nsdp import SwitchClient, Transport, discover, parse_mac, probe
 from .nsdp import firmware as fw
 from .nsdp.client import AuthError, PasswordRequired, Unreachable
@@ -36,6 +37,12 @@ class Manager:
         self.last_scan: float | None = None
         self._scan_lock = asyncio.Lock()
         self._poller: asyncio.Task | None = None
+        self.monitor = Monitor(
+            self,
+            config["monitor.interval_seconds"],
+            config["monitor.history_minutes"],
+            config["notify.webhook_url"],
+        )
         self.upgrades: dict[str, dict] = {}
         self._upgrade_tasks: set[asyncio.Task] = set()
         self.upgrade_settle = 2.0  # pause between 'upgrade mode' and the upload
@@ -49,8 +56,10 @@ class Manager:
         seconds = self.config["nsdp.poll_seconds"]
         if seconds > 0:
             self._poller = asyncio.create_task(self._poll(seconds))
+        self.monitor.start()
 
     async def stop(self) -> None:
+        await self.monitor.stop()
         for task in list(self._upgrade_tasks):
             task.cancel()
         if self._poller:
@@ -116,6 +125,7 @@ class Manager:
             "online": bool(self.seen.get(mac) and time.time() - self.seen[mac] < ONLINE_GRACE),
             "last_seen": last_seen,
             "info": device.get("info", {}),
+            "ports": self.monitor.snapshot(mac),
         }
 
     def devices(self) -> list[dict]:

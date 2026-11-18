@@ -21,6 +21,10 @@ The data folder is `/data` in the container, `./data` otherwise, or `--data DIR`
 | `nsdp.tftp_port` | `SWITCHYARD_NSDP_TFTP_PORT` | `69` | UDP port of the switch's TFTP server, used for firmware upgrades. |
 | `nsdp.discovery_seconds` | `SWITCHYARD_NSDP_DISCOVERY_SECONDS` | `2.0` | How long a search waits for answers. |
 | `nsdp.poll_seconds` | `SWITCHYARD_NSDP_POLL_SECONDS` | `60` | Search in the background this often to keep the online state fresh. 0 = never. |
+| `monitor.interval_seconds` | `SWITCHYARD_MONITOR_INTERVAL_SECONDS` | `30` | Read the ports of every managed switch this often to keep history, link events and metrics. 0 = off. |
+| `monitor.history_minutes` | `SWITCHYARD_MONITOR_HISTORY_MINUTES` | `60` | How much traffic history to keep in memory. |
+| `metrics.token` | `SWITCHYARD_METRICS_TOKEN` | `""` | Bearer token for GET /metrics (Prometheus). Empty: /metrics needs a web session. |
+| `notify.webhook_url` | `SWITCHYARD_NOTIFY_WEBHOOK_URL` | `""` | POST a JSON message to this URL for link and online/offline events. Empty: off. |
 | `demo.enabled` | `SWITCHYARD_DEMO_ENABLED` | `false` | true = start four simulated switches instead of using the network. |
 | `log.level` | `SWITCHYARD_LOG_LEVEL` | `"info"` | debug, info, warning or error. |
 

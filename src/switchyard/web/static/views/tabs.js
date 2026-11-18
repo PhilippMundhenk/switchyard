@@ -1,6 +1,7 @@
 // The sections of the switch detail page.
 import { ApiError, del, dev, get, patch, post, put } from '../api.js';
 import { clear, download, fmtBytes, fmtLimit, fmtRate, h, portList, validateDot1q, validateNetwork } from '../util.js';
+import { drawChart } from './chart.js';
 import { confirmDialog, field, modal, run, section, select, showError, toast, unsupported, withSwitchAuth } from '../ui.js';
 
 const speedClass = (p) => (p.up ? `s${Math.min(p.speed_mbps || 10, 10000)}` : 'down');
@@ -124,6 +125,26 @@ async function ports(host, S) {
       h('thead', {}, h('tr', {}, ...['Port', 'Link', 'Duplex', 'Received', 'Rx rate', 'Sent', 'Tx rate', 'CRC errors'].map((t, i) => h('th', { class: i > 2 ? 'num' : '' }, t)))), body)),
     h('p', {}, clearBtn)));
   poll(S, async () => draw((await get(`${dev(S.mac)}/ports`)).ports, Date.now()), 3000);
+
+  // traffic history (needs the background monitor)
+  const chartBox = h('div', { 'data-testid': 'chart-box' });
+  const which = select([[0, 'All ports'], ...S.state.ports.map((p) => [p.port, `Port ${p.port}`])], 0, { 'aria-label': 'Port for the chart', 'data-testid': 'chart-port' });
+  const range = select([[15, 'Last 15 minutes'], [60, 'Last hour']], 60, { 'aria-label': 'Time range', 'data-testid': 'chart-range' });
+  const drawHistory = async () => {
+    const hist = await get(`${dev(S.mac)}/history?minutes=${range.value}`);
+    const points = hist.series[which.value] || [];
+    clear(chartBox);
+    if (points.length < 2) {
+      chartBox.append(h('p', { class: 'muted', 'data-testid': 'chart-empty' }, hist.interval ? `Collecting data… the monitor reads the ports every ${hist.interval} s.` : 'The monitor is off. Set monitor.interval_seconds to record traffic history.'));
+      return;
+    }
+    chartBox.append(drawChart(points), h('div', { class: 'chart-legend' }, h('span', {}, h('i', { class: 'rx' }), 'Received'), h('span', {}, h('i', { class: 'tx' }), 'Sent')));
+  };
+  which.addEventListener('change', () => drawHistory().catch(showError));
+  range.addEventListener('change', () => drawHistory().catch(showError));
+  host.append(section('Traffic history', h('div', { class: 'row' }, which, range), chartBox));
+  await drawHistory().catch(() => {});
+  poll(S, drawHistory, 10000);
 }
 
 // -------------------------------------------------------------------- vlan

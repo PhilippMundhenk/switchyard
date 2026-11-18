@@ -52,6 +52,26 @@ SCHEMA: list[tuple[str, str, object, str]] = [
         "Search in the background this often to keep the online state fresh.\n# 0 = never.",
     ),
     (
+        "monitor",
+        "interval_seconds",
+        30,
+        "Read the ports of every managed switch this often to keep history, link events and\n"
+        "# metrics. 0 = off.",
+    ),
+    ("monitor", "history_minutes", 60, "How much traffic history to keep in memory."),
+    (
+        "metrics",
+        "token",
+        "",
+        "Bearer token for GET /metrics (Prometheus). Empty: /metrics needs a web session.",
+    ),
+    (
+        "notify",
+        "webhook_url",
+        "",
+        "POST a JSON message to this URL for link and online/offline events. Empty: off.",
+    ),
+    (
         "demo",
         "enabled",
         False,

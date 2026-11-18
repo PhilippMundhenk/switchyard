@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import ipaddress
 import logging
 import re
@@ -11,7 +12,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -229,6 +230,14 @@ def create_app(config: Config) -> FastAPI:
         if match:  # accept upper case and dashes in MAC addresses
             mac = match.group(2).lower().replace("-", ":")
             request.scope["path"] = path = f"{match.group(1)}{mac}{match.group(3) or ''}"
+        if path == "/metrics":
+            token = config["metrics.token"]
+            bearer = request.headers.get("authorization", "")
+            ok = auth.valid(request.cookies.get(COOKIE)) or (
+                bool(token) and hmac.compare_digest(bearer, f"Bearer {token}")
+            )
+            if not ok:
+                return error(401, "login_required", "Metrics need a session or the metrics token.")
         if path.startswith("/api/"):
             if request.method not in ("GET", "HEAD", "OPTIONS"):
                 origin = request.headers.get("origin")
@@ -370,6 +379,16 @@ def create_app(config: Config) -> FastAPI:
             if r["id"] > after and (device is None or r["device"] == device)
         ]
         return {"entries": rows}
+
+    @api.get("/events")
+    def events(after: int = 0, device: str | None = None):
+        return {"events": manager().monitor.list_events(after, device)}
+
+    @api.get("/devices/{mac}/history")
+    def history(mac: str, minutes: float = 60):
+        m = manager()
+        m.device(mac)
+        return m.monitor.history(mac, min(max(minutes, 1), 24 * 60))
 
     @api.get("/meta")
     def meta():
@@ -574,6 +593,12 @@ def create_app(config: Config) -> FastAPI:
     async def restore(mac: str, body: RestoreBody):
         steps = await manager().restore(mac, body.backup, body.include_network)
         return {"ok": all(s["ok"] for s in steps), "steps": steps}
+
+    @app.get("/metrics", include_in_schema=False)
+    def metrics():
+        return PlainTextResponse(
+            manager().monitor.metrics(), media_type="text/plain; version=0.0.4; charset=utf-8"
+        )
 
     app.include_router(api)
 

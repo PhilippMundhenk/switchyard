@@ -13,7 +13,8 @@
 - **Stored secrets.** `devices.json` and `secrets.json` are mode 0600. A switch password is stored
   only when you tick "remember". Backups contain no passwords. The protocol log blanks
   credentials.
-- **No outbound connections.** Switchyard talks only to the switches.
+- **Outbound connections.** Switchyard talks to the switches and, only if you set `notify.webhook_url`, POSTs event messages (switch name, MAC, port text) to that URL. Nothing else leaves the machine.
+- **Metrics.** `/metrics` needs a web session or the bearer token from `metrics.token`; it reveals MAC addresses, names and port counters.
 
 ## What it cannot protect
 

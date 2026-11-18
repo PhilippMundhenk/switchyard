@@ -384,3 +384,31 @@ def test_firmware_upgrade_end_to_end(app, tmp_path):
     expect(app.get_by_test_id("fw-state")).to_have_attribute("data-state", "done")
     expect(app.get_by_test_id("fw-state")).to_contain_text("1.00.13")
     assert api(app, "GET", f"/devices/{MAC}/state").json()["info"]["firmware"] == "1.00.13"
+
+
+def test_monitor_cards_chart_and_events(app):
+    add_switch(app, MAC, "password")
+    app.goto(app.server.url + "/#/")
+    app.reload()
+    app.set_default_timeout(30000)  # the list refreshes itself every few seconds
+    expect(app.get_by_test_id("minipanel")).to_be_visible(timeout=30000)
+    expect(app.get_by_test_id("minipanel").locator("span.s1000").first).to_be_visible()
+    open_tab(app, "ports")
+    app.set_default_timeout(30000)
+    expect(app.get_by_test_id("chart")).to_be_visible(timeout=30000)
+    expect(app.locator("svg.chart polyline.series.rx")).to_have_count(1)
+    app.get_by_test_id("chart-port").select_option("1")
+    expect(app.get_by_test_id("chart")).to_be_visible(timeout=30000)
+    # a link change shows up as an event
+    api(app, "PUT", f"/devices/{MAC}/port-settings", {"ports": {"1": {"speed_code": 1}}})
+    app.get_by_test_id("nav-events").click()
+    expect(app.get_by_test_id("events-body")).to_contain_text("Port 1 went down", timeout=30000)
+    app.get_by_test_id("events-filter").select_option("")
+    expect(app.get_by_test_id("event-row").first).to_be_visible()
+
+
+def test_metrics_with_the_session(app):
+    add_switch(app, MAC, "password")
+    app.wait_for_timeout(2500)
+    r = app.request.get(app.server.url + "/metrics")
+    assert r.ok and "switchyard_port_up" in r.text()

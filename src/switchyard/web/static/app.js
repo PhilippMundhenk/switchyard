@@ -5,6 +5,7 @@ import { showError, toast } from './ui.js';
 import { renderSwitches } from './views/switches.js';
 import { renderDetail } from './views/detail.js';
 import { renderLog } from './views/log.js';
+import { renderEvents } from './views/events.js';
 import { renderSettings } from './views/settings.js';
 
 const root = document.getElementById('app');
@@ -46,6 +47,7 @@ function routeInfo() {
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean).map(decodeURIComponent);
   if (parts[0] === 'switch' && parts[1]) return { name: 'switch', mac: parts[1], tab: parts[2] || 'overview' };
   if (parts[0] === 'log') return { name: 'log' };
+  if (parts[0] === 'events') return { name: 'events' };
   if (parts[0] === 'settings') return { name: 'settings' };
   return { name: 'home' };
 }
@@ -99,7 +101,8 @@ async function render() {
     { class: 'nav', 'aria-label': 'Main' },
     ...[
       ['#/', 'Switches', 'home'],
-      ['#/log', 'Activity', 'log'],
+      ['#/events', 'Events', 'events'],
+      ['#/log', 'Protocol log', 'log'],
       ['#/settings', 'Settings', 'settings'],
     ].map(([href, text, key]) =>
       h('a', { href, 'aria-current': route.name === key || (key === 'home' && route.name === 'switch') ? 'page' : null, 'data-testid': `nav-${key}` }, text),
@@ -124,6 +127,7 @@ async function render() {
     if (route.name === 'home') await renderSwitches(main, ctx);
     else if (route.name === 'switch') await renderDetail(main, ctx, route);
     else if (route.name === 'log') await renderLog(main, ctx);
+    else if (route.name === 'events') await renderEvents(main, ctx);
     else await renderSettings(main, ctx, session);
   } catch (err) {
     showError(err);

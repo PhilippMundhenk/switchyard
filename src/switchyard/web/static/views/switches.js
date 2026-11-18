@@ -18,6 +18,7 @@ function card(d) {
       h('dt', {}, 'Firmware'), h('dd', {}, info.firmware || '?'),
       h('dt', {}, 'Seen'), h('dd', {}, d.online ? 'online' : fmtAgo(d.last_seen)),
     ),
+    d.ports ? h('div', { class: 'minipanel', 'data-testid': 'minipanel', 'aria-label': 'Port state' }, ...d.ports.map((p) => h('span', { class: p.up ? `s${Math.min(p.speed_mbps || 10, 10000)}` : '', title: `Port ${p.port}: ${p.up ? `${p.speed_mbps} Mbit/s` : 'down'}` }))) : null,
     h('div', { class: 'row' }, h('span', { class: 'tag' }, d.has_password ? 'password stored' : 'no password'), d.address ? h('span', { class: 'tag' }, `unicast ${d.address}`) : null),
   );
 }
@@ -115,4 +116,9 @@ export async function renderSwitches(main, ctx) {
   });
   ipBtn.addEventListener('click', () => addByIp(refresh));
   await refresh();
+  const timer = setInterval(async () => {
+    if (document.hidden || document.querySelector('.overlay')) return;
+    try { devices = (await get('/devices')).devices; drawManaged(); } catch (err) { /* next time */ }
+  }, 8000);
+  ctx.onCleanup(() => clearInterval(timer));
 }

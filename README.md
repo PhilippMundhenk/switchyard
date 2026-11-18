@@ -65,6 +65,7 @@ Want to look around first? `docker run --rm -p 8080:8080 -e SWITCHYARD_DEMO_ENAB
 | Ports | Speed and flow control per port, link aggregation (static LAG) |
 | Other | Port mirroring, IGMP snooping, loop detection, cable test |
 | Maintenance | Switch password, reboot, factory reset, JSON backup and restore, **firmware upgrade** (checked image, typed confirmation, progress) |
+| Monitoring | Background port polling: traffic history chart, link and online/offline events, live port dots on every card, Prometheus `/metrics`, optional webhook |
 | Debugging | Live protocol log with passwords blanked |
 
 Not included: LACP (these switches only do static aggregation), LED and power saving options. Link aggregation, port speed and firmware upgrade are new and, like everything else, **not yet verified on real hardware**; the firmware upgrade is the riskiest function, read [docs/HARDWARE.md](docs/HARDWARE.md) first.
@@ -88,6 +89,9 @@ Most settings have a sensible default. The common ones:
 | `SWITCHYARD_SERVER_PORT` | Web port, default 8080 |
 | `SWITCHYARD_NSDP_INTERFACES` | Search only these interfaces, e.g. `eth0` |
 | `SWITCHYARD_NSDP_TARGETS` | Directed broadcast or switch addresses for routed networks |
+| `SWITCHYARD_MONITOR_INTERVAL_SECONDS` | How often ports are read for history and events, default 30, 0 = off |
+| `SWITCHYARD_METRICS_TOKEN` | Bearer token for `/metrics` |
+| `SWITCHYARD_NOTIFY_WEBHOOK_URL` | POST link and online/offline events here |
 | `SWITCHYARD_DEMO_ENABLED` | Use simulated switches |
 
 All keys: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).

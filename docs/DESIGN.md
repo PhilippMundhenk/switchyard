@@ -44,6 +44,7 @@ flowchart LR
 | `nsdp/tftp.py`, `nsdp/firmware.py` | TFTP client, firmware image checks |
 | `nsdp/transport.py` | sockets, retries, sequence matching, packet log |
 | `nsdp/client.py` | typed reads and authenticated writes for one switch |
+| `monitor.py`, `notify.py` | background sampling, history, events, metrics, webhook |
 | `manager.py` | list of switches, discovery, backup and restore |
 | `web/app.py`, `web/auth.py` | HTTP API, login, security headers |
 | `web/static/` | single page app, no build step |

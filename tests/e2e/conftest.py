@@ -32,6 +32,7 @@ class LiveServer:
             "SWITCHYARD_SERVER_HOST": "127.0.0.1",
             "SWITCHYARD_SERVER_PORT": str(self.port),
             "SWITCHYARD_NSDP_POLL_SECONDS": "0",
+            "SWITCHYARD_MONITOR_INTERVAL_SECONDS": "1",
             "SWITCHYARD_NSDP_DISCOVERY_SECONDS": "0.4",
             "NO_PROXY": "127.0.0.1,localhost",
             "no_proxy": "127.0.0.1,localhost",

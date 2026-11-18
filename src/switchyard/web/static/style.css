@@ -140,3 +140,18 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 [data-testid="found"] .card { margin-top: 16px; }
 .row label.check { margin: 0; }
 hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
+.chart { width: 100%; height: auto; max-height: 260px; }
+.chart .grid { stroke: var(--border); stroke-width: 1; }
+.chart .axis { fill: var(--muted); font-size: 11px; font-family: var(--mono); }
+.chart .series { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.chart .series.rx { stroke: var(--accent); } .chart .series.tx { stroke: var(--warn); }
+.chart-legend { display: flex; gap: 16px; font-size: .85rem; color: var(--muted); }
+.chart-legend i { display: inline-block; width: 12px; height: 3px; margin-right: 6px; vertical-align: middle; }
+.chart-legend i.rx { background: var(--accent); } .chart-legend i.tx { background: var(--warn); }
+.minipanel { display: flex; gap: 3px; flex-wrap: wrap; margin: 2px 0; }
+.minipanel span { width: 14px; height: 14px; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--border); display: inline-block; }
+.minipanel span.s10 { background: var(--s10); } .minipanel span.s100 { background: var(--s100); }
+.minipanel span.s1000 { background: var(--s1000); } .minipanel span.s10000 { background: var(--s10000); }
+.event-row td:first-child { white-space: nowrap; color: var(--muted); }
+.tag.link_down, .tag.offline { color: var(--danger); border-color: var(--danger); }
+.tag.link_up, .tag.online { color: var(--ok); border-color: var(--ok); }
