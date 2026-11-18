@@ -10,7 +10,7 @@ import time
 
 from .config import Config
 from .nsdp import SwitchClient, Transport, discover, parse_mac, probe
-from .nsdp.client import AuthError, Unreachable
+from .nsdp.client import AuthError, PasswordRequired, Unreachable
 from .store import Store
 
 log = logging.getLogger(__name__)
@@ -247,7 +247,7 @@ class Manager:
                 steps.append({"step": name, "ok": True})
             except Exception as exc:
                 steps.append({"step": name, "ok": False, "error": str(exc)})
-                if isinstance(exc, (AuthError, Unreachable)):
+                if isinstance(exc, (AuthError, Unreachable, PasswordRequired)):
                     raise
 
         def ints(table: dict | None) -> dict:

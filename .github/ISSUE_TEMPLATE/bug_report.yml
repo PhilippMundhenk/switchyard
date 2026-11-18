@@ -1,0 +1,26 @@
+name: Bug report
+description: Something does not work
+labels: [bug]
+body:
+  - type: input
+    id: model
+    attributes: { label: Switch model and hardware revision, placeholder: "GS108E v3" }
+    validations: { required: true }
+  - type: input
+    id: firmware
+    attributes: { label: Switch firmware version }
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes: { label: Switchyard version }
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes: { label: What happened, description: "What did you do, what did you expect?" }
+    validations: { required: true }
+  - type: textarea
+    id: log
+    attributes:
+      label: Activity log excerpt
+      description: "Copy it from the Activity page (button 'Copy for bug report'). Passwords are blanked. Remove MAC addresses and IPs you do not want to share."
+      render: text

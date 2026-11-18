@@ -1,0 +1,28 @@
+name: Hardware report
+description: It works (or partly works) on my switch
+labels: [hardware]
+body:
+  - type: input
+    id: model
+    attributes: { label: Switch model and hardware revision }
+    validations: { required: true }
+  - type: input
+    id: firmware
+    attributes: { label: Firmware version }
+    validations: { required: true }
+  - type: checkboxes
+    id: worked
+    attributes:
+      label: What worked
+      options:
+        - label: Discovery
+        - label: Reading port status and statistics
+        - label: Changing name or IP settings
+        - label: VLANs
+        - label: QoS and rate limits
+        - label: Mirroring, IGMP, loop detection
+        - label: Cable test
+        - label: Backup and restore
+  - type: textarea
+    id: notes
+    attributes: { label: Notes }

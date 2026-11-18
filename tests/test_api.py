@@ -447,3 +447,12 @@ def test_pydantic_errors_are_422_not_500(client, office):
     assert client.put(f"{D}/vlan/dot1q", json={"vlans": "x"}).status_code == 422
     assert client.put(f"{D}/qos", json={"ingress": {"abc": 1}}).status_code == 422
     assert client.put(f"{D}/mirror", json={"destination": 99, "sources": [1]}).status_code == 422
+
+
+def test_restore_without_password_asks_for_it_instead_of_failing_a_step(client):
+    client.post("/api/discovery/scan")
+    client.post("/api/devices", json={"mac": MAC, "password": "password"})
+    data = client.get(f"{D}/backup").json()
+    client.patch(D, json={"forget_password": True})
+    r = client.post(f"{D}/restore", json={"backup": data})
+    assert r.status_code == 409 and r.json()["code"] == "password_required"
