@@ -22,6 +22,7 @@ Errors are JSON: `{"code": ..., "message": ...}`.
 | DELETE | `/api/devices/{mac}/backups/{name}` | Delete Backup |
 | GET | `/api/devices/{mac}/backups/{name}` | Download Backup |
 | POST | `/api/devices/{mac}/cable-test` | Cable Test |
+| GET | `/api/devices/{mac}/diagnostics` | Diagnostics |
 | POST | `/api/devices/{mac}/diff` | Diff |
 | POST | `/api/devices/{mac}/factory-reset` | Factory Reset |
 | GET | `/api/devices/{mac}/firmware` | Firmware Status |

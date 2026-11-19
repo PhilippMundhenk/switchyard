@@ -571,3 +571,13 @@ def test_audit_log_lists_changes_on_the_events_page(app):
     expect(app.get_by_test_id("audit-row").first).to_be_visible()
     expect(app.get_by_test_id("audit-body")).to_contain_text("PUT /loop-detection")
     expect(app.get_by_test_id("audit-body")).to_contain_text("admin")
+
+
+def test_diagnostics_scan_in_maintenance(app):
+    add_switch(app, MAC, "password")
+    open_tab(app, "maintenance")
+    app.get_by_test_id("diag-run").click()
+    expect(app.get_by_test_id("diag-body")).to_contain_text("model", timeout=30000)
+    expect(app.locator('[data-testid="diag-row"][data-answers="true"]').first).to_be_visible()
+    expect(app.get_by_test_id("diag-body")).to_contain_text("0xa000")
+    expect(app.get_by_test_id("diag-copy")).to_be_visible()

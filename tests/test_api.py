@@ -722,3 +722,40 @@ def test_every_write_route_is_closed_to_viewers(tmp_path, sim):
                     method.upper(), route.replace("{mac}", MAC).replace("{name}", "x"), json={}
                 )
                 assert r.status_code == 403, (method, route, r.status_code)
+
+
+def test_diagnostics_scan_is_read_only_and_works_for_viewers(client, office):
+    r = client.get(f"{D}/diagnostics")
+    assert r.status_code == 200
+    rows = {t["tag"]: t for t in r.json()["tags"]}
+    assert rows[0x0001]["answered"] and rows[0x0001]["name"] == "model"
+    assert rows[0x2000]["answered"] and rows[0x0C00]["values"]
+    assert 0x000A not in rows and 0x0009 not in rows and 0x001A not in rows  # no credentials
+    assert rows[0xA000]["answered"] is False  # unverified setting the simulator does not have
+    assert r.json()["info"]["model"] == "GS108E"
+    extra = client.get(f"{D}/diagnostics?extra=0x1234,5000").json()["tags"]
+    assert {0x1234, 5000} <= {t["tag"] for t in extra}
+    assert client.get(f"{D}/diagnostics?extra=0x10000").status_code == 422
+    assert client.get(f"{D}/diagnostics?extra=zz").status_code == 422
+    assert client.get("/api/devices/aa:bb:cc:dd:ee:ff/diagnostics").status_code == 404
+
+
+async def test_scan_tags_marks_silent_firmware(transport):
+    from switchyard.nsdp import SwitchClient, parse_mac
+    from switchyard.sim import SimSwitch, Simulator
+
+    sw = SimSwitch("02:00:00:00:00:44", unknown_tag="silent")
+    sim = Simulator([sw])
+    await sim.start()
+    from switchyard.nsdp import Transport
+
+    t = Transport(client_port=0, targets=[f"127.0.0.1:{sim.port}"])
+    await t.start()
+    try:
+        c = SwitchClient(t, parse_mac(sw.mac), None, None)
+        rows = {r["tag"]: r for r in await c.scan_tags([0x0001, 0xA000], timeout=0.15)}
+        assert rows[0x0001]["answered"] is True
+        assert rows[0xA000]["answered"] is False and rows[0xA000]["status"] is None
+    finally:
+        await t.stop()
+        sim.stop()

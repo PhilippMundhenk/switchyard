@@ -23,6 +23,14 @@ Switchyard has so far only run against a simulator. Take it slowly and keep a wa
 6. Download a backup under *Maintenance* before you try VLANs.
 7. Try VLAN or QoS changes on ports that carry nothing important.
 
+## Help support more models
+
+*Maintenance*, *Diagnostics*, *Scan settings* reads every known setting once and shows which ones
+your switch answers, with the raw bytes. It changes nothing. Press *Copy for bug report* and paste
+the result into a *Hardware report* issue. Settings such as port LED, power saving, loop prevention
+and port names exist on some models; their value layouts are not verified, so Switchyard does not
+write them yet and needs these reports first.
+
 ## Riskier functions
 
 Try these last, on a switch you can afford to lose, with stable power:

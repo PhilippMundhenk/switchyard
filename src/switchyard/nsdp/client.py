@@ -618,6 +618,27 @@ class SwitchClient:
                 raise NsdpError(0, T.FIRMWARE_UPGRADE, f"Firmware upload failed: {exc}") from exc
         return info
 
+    async def scan_tags(self, tags: list[int], timeout: float = 0.8) -> list[dict]:
+        """Read single settings and report the raw values (diagnostics, read-only).
+
+        Each tag is asked on its own so one that the firmware ignores cannot hide the others.
+        """
+        out = []
+        async with self.lock:
+            for tag in tags:
+                row = {"tag": tag, "name": T.NAMES.get(tag), "answered": False, "values": []}
+                try:
+                    reply = await self.transport.request(
+                        Op.READ_REQUEST, self.mac, [(tag, b"")], self.address, timeout, 0
+                    )
+                    row["status"] = reply.status
+                    row["answered"] = reply.status == 0 and reply.has(tag)
+                    row["values"] = [v.hex() for v in reply.values(tag)][:16]
+                except TimeoutError:
+                    row["status"] = None  # silent: the firmware ignores tags it does not know
+                out.append(row)
+        return out
+
     async def reset_stats(self) -> None:
         await self.write([(T.STATS_RESET, b"\x01")])
 

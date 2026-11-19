@@ -635,11 +635,29 @@ async function maintenance(host, S) {
   backupNow.addEventListener('click', () => run(backupNow, async () => { await post(`${dev(S.mac)}/backups`); toast('Backup stored.'); await loadBackups(); }));
   loadBackups().catch(() => {});
 
+  const scanBody = h('tbody', { 'data-testid': 'diag-body' });
+  const scanOut = h('div', { 'data-testid': 'diag-out' });
+  const scanBtn = h('button', { class: 'btn', 'data-testid': 'diag-run' }, 'Scan settings');
+  const copyBtn = h('button', { class: 'btn', 'data-testid': 'diag-copy', hidden: true }, 'Copy for bug report');
+  let scanText = '';
+  scanBtn.addEventListener('click', () => run(scanBtn, async () => {
+    clear(scanOut).append(h('p', { class: 'muted' }, 'Reading… silent firmware needs about a second per unknown setting.'));
+    const res = await get(`${dev(S.mac)}/diagnostics`);
+    const rows = res.tags.map((t) => [`0x${t.tag.toString(16).padStart(4, '0')}`, t.name || '(unknown)', t.answered ? 'answers' : t.status === null ? 'silent' : `status ${t.status}`, t.values.join(' | ') || '–']);
+    scanText = `${res.info.model} fw ${res.info.firmware} (${res.info.password_mode})\n` + rows.filter((r) => r[2] === 'answers').map((r) => r.join('  ')).join('\n');
+    clear(scanOut).append(h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ...['Tag', 'Setting', 'Result', 'Raw value(s)'].map((x) => h('th', {}, x)))),
+      h('tbody', { 'data-testid': 'diag-body' }, ...rows.map((r) => h('tr', { 'data-testid': 'diag-row', 'data-answers': String(r[2] === 'answers') }, h('td', { class: 'mono' }, r[0]), h('td', {}, r[1]), h('td', {}, r[2]), h('td', { class: 'mono' }, r[3])))))));
+    copyBtn.hidden = false;
+  }));
+  copyBtn.addEventListener('click', async () => { try { await navigator.clipboard.writeText(scanText); toast('Copied.'); } catch (e) { toast('Copy is not available in this browser.', 'error'); } });
+
   host.append(
     section('This entry', field('Label', label), field('Notes', notes), field('Fixed address', address, 'Set this for a switch on another subnet; Switchyard then talks to it directly.'),
       h('div', { class: 'row' }, saveMeta, forget, remove)),
     section('Automatic backups', h('p', { class: 'muted' }, 'Stored on the server in the data folder. Backups contain the configuration, never passwords.'),
       h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Created'), h('th', { class: 'num' }, 'Size'), h('th', {}, ''))), backupRows)), h('p', {}, backupNow)),
+    section('Diagnostics', h('p', { class: 'muted' }, 'Reads each known setting once and shows which ones this switch answers, with the raw bytes. Nothing is changed. Paste the result into a hardware report to help support more models.'),
+      h('div', { class: 'row' }, scanBtn, copyBtn), scanOut),
     section('Port and VLAN names', h('p', { class: 'muted' }, 'Names are kept by Switchyard (not on the switch) and shown in the port panel, the tables and the editors.'),
       h('div', { class: 'grid' }, ...portIds.map((p) => field(`Port ${p}`, portInputs[p])), ...vlanIds.map((v) => field(`VLAN ${v}`, vlanInputs[v]))), h('p', {}, saveNames)),
     section('Switch password', h('p', { class: 'muted' }, d.has_password ? 'A password is stored for this switch.' : 'No password is stored. You are asked when you change something.'),

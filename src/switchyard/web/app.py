@@ -31,6 +31,22 @@ from .audit import Audit
 from .auth import COOKIE, Auth
 
 log = logging.getLogger(__name__)
+# settings whose layout is unverified; the diagnostics scan only reads them
+PROBE_UNVERIFIED = (
+    0x0002,
+    0x000C,
+    0x000F,
+    0x0014,
+    0x0017,
+    0x7400,
+    0x8000,
+    0xA000,
+    0xA800,
+    0xAC00,
+    0xB000,
+    0xF000,
+)
+SECRET_TAGS = {0x0009, 0x000A, 0x001A}  # credentials are never read back
 VIEWER_MAY_POST = {"/api/logout", "/api/discovery/scan"}
 MAC_PATH = re.compile(r"^(/api/devices/)([0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5})(/.*)?$")
 STATIC = Path(__file__).parent / "static"
@@ -430,6 +446,19 @@ def create_app(config: Config) -> FastAPI:
         m = manager()
         m.device(mac)
         return m.monitor.history(mac, min(max(minutes, 1), 24 * 60))
+
+    @api.get("/devices/{mac}/diagnostics")
+    async def diagnostics(mac: str, extra: str = ""):
+        """Read-only scan: which known (and a few unverified) settings does the switch answer?"""
+        wanted = sorted({*T.NAMES, *PROBE_UNVERIFIED})
+        for item in [x for x in extra.split(",") if x.strip()][:16]:
+            tag = int(item, 0)
+            if not 0 <= tag <= 0xFFFE:
+                raise ValueError("A tag number is 0 to 0xfffe.")
+            wanted.append(tag)
+        wanted = [t for t in dict.fromkeys(wanted) if t not in SECRET_TAGS]
+        client = manager().client(mac)
+        return {"tags": await client.scan_tags(wanted), "info": await client.read_info()}
 
     @api.get("/devices/{mac}/history.csv")
     def history_csv(mac: str, minutes: float = 60):
