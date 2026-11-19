@@ -3,12 +3,16 @@
 ## What Switchyard protects
 
 - **Web interface.** One password, hashed with scrypt, sessions in memory (cookie `HttpOnly`,
-  `SameSite=Strict`, `Secure` over HTTPS). Five wrong logins lock login for a minute. Every
+  `SameSite=Strict`, `Secure` over HTTPS). Five wrong logins lock that client address (not everyone) for a minute; passwords longer than 200 characters are refused before hashing. Every
   `/api` route except login, session and health needs a session; a test enumerates all routes
   to prove it.
 - **Read-only login.** `auth.viewer_password` adds a second password that can read everything but is refused (403) on every route that changes something. A test walks the whole OpenAPI route list, so a new write route is closed to viewers by default.
 - **Audit log.** Every successful change is appended to `data/audit.log` (time, role, route, switch; mode 0600; never the request body) and shown on the *Events* page.
-- **Cross-site requests.** Write requests with an `Origin` that differs from `Host` are refused.
+- **Cross-site requests.** Write requests are refused when `Origin` differs from `Host` or `Sec-Fetch-Site` says cross-site, and need a JSON (or, for firmware, binary) content type, which a plain HTML form cannot send.
+- **DNS rebinding.** With login disabled, only IP addresses, `localhost` and names in `server.allowed_hosts` are accepted in the `Host` header; with login enabled, `server.allowed_hosts` can restrict names too.
+- **Request size.** Bodies are limited to 1 MB, firmware uploads to 16 MB, also when sent chunked.
+- **Generated password.** Printed once on stderr in a framed block, independent of the log level; stored only as a scrypt hash. `switchyard reset-password` makes a new one.
+- **Add by IP.** Only an answer from the probed address is accepted.
 - **Browser hardening.** Strict content security policy (no inline script), `X-Frame-Options:
   DENY`, `nosniff`, no referrer. All text from switches and users is inserted as text.
 - **Destructive actions.** Reboot, factory reset and firmware upgrade need the switch MAC typed as confirmation. A firmware image is parsed and checksummed before anything is sent, is limited to 16 MB, and is never written to disk by Switchyard.
@@ -32,3 +36,11 @@
 
 Use a long web password. Put TLS in front. Do not expose the port to the internet. Do not
 remember switch passwords on a shared host.
+
+## Review 2026-11-19
+
+A review of code, configuration and deployment found six issues, all fixed: a login lockout that
+one client could use against everybody, DNS rebinding with login disabled, unlimited request
+bodies, add-by-IP accepting answers from other hosts, cross-site protection that relied on the
+`Origin` header alone, and a generated password that a strict log level could hide. Accepted risks
+are listed above under *What it cannot protect*.

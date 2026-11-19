@@ -1,5 +1,4 @@
 import json
-import logging
 import stat
 
 from fastapi.testclient import TestClient
@@ -10,6 +9,7 @@ from switchyard.web.app import create_app
 from .conftest import PASSWORD, make_env
 
 MAC = "00:26:f2:aa:10:01"
+BIN = {"Content-Type": "application/octet-stream"}
 D = f"/api/devices/{MAC}"
 
 
@@ -41,14 +41,32 @@ def test_session_login_logout_and_cookie(config):
         assert c.get("/api/devices").status_code == 401
 
 
-def test_login_lockout(config, monkeypatch):
+def test_login_lockout_is_per_client(config):
     with TestClient(create_app(config)) as c:
         for _ in range(5):
             assert c.post("/api/login", json={"password": "bad"}).status_code == 401
         r = c.post("/api/login", json={"password": PASSWORD})
         assert r.status_code == 429 and r.json()["code"] == "locked"
-        c.app.state.auth.locked_until = 0
+        auth = c.app.state.auth
+        # another client is not affected by this one's failures (no lock-out of the admin)
+        assert auth.login(PASSWORD, "10.0.0.9")
+        auth.locked["testclient"] = 0
         assert c.post("/api/login", json={"password": PASSWORD}).status_code == 200
+
+
+def test_lockout_tracking_is_bounded(config, monkeypatch):
+    from switchyard.web import auth as auth_mod
+
+    monkeypatch.setattr(auth_mod, "MAX_TRACKED_CLIENTS", 3)
+    with TestClient(create_app(config)) as c:
+        auth = c.app.state.auth
+        for i in range(10):
+            for _ in range(5):
+                auth.login("bad", f"10.0.0.{i}")
+        assert len(auth.failures) <= 3 and len(auth.locked) <= 3
+        for i in range(10):
+            auth.login("bad", f"10.0.1.{i}")
+        assert len(auth.failures) <= 3
 
 
 def test_session_expiry(config):
@@ -76,29 +94,29 @@ def test_security_headers(client):
     assert "Switchyard" in r.text
 
 
-def test_generated_first_start_password(tmp_path, sim, caplog):
-    env = make_env(sim.port, sim.tftp_port)
+def test_generated_first_start_password(tmp_path, sim, capsys, caplog):
+    env = make_env(sim.port, sim.tftp_port, SWITCHYARD_LOG_LEVEL="error")
     del env["SWITCHYARD_AUTH_PASSWORD"]
-    with (
-        caplog.at_level(logging.WARNING),
-        TestClient(create_app(cfg.load(tmp_path, env=env))) as c,
-    ):
+    with TestClient(create_app(cfg.load(tmp_path, env=env))) as c:
         generated = c.app.state.auth.generated
-        assert generated and generated in caplog.text
         assert c.post("/api/login", json={"password": generated}).status_code == 200
+    err = capsys.readouterr().err
+    assert generated and generated in err and "shown only this once" in err
+    assert generated not in caplog.text  # only on stderr, not in the log
     secrets = tmp_path / "secrets.json"
     assert stat.S_IMODE(secrets.stat().st_mode) == 0o600
     assert generated not in secrets.read_text()
-    # second start: the stored hash is used, nothing is generated or logged again
-    caplog.clear()
+    # second start: the stored hash is used, nothing is generated or shown again
     with TestClient(create_app(cfg.load(tmp_path, env=env))) as c:
         assert c.app.state.auth.generated is None
         assert c.post("/api/login", json={"password": generated}).status_code == 200
-    assert generated not in caplog.text
+    assert generated not in capsys.readouterr().err
 
 
 def test_auth_disabled(tmp_path, sim):
-    env = make_env(sim.port, SWITCHYARD_AUTH_DISABLED="true")
+    env = make_env(
+        sim.port, SWITCHYARD_AUTH_DISABLED="true", SWITCHYARD_SERVER_ALLOWED_HOSTS="testserver"
+    )
     with TestClient(create_app(cfg.load(tmp_path, env=env))) as c:
         assert c.get("/api/devices").status_code == 200
         assert c.get("/api/session").json()["auth_disabled"] is True
@@ -529,22 +547,29 @@ def test_firmware_check_and_upgrade_flow(client, office):
     manager.transport.tftp_timeout = 0.3
     assert client.get(f"{D}/firmware").json() == {"state": "idle"}
     image = _image()
-    chk = client.post(f"{D}/firmware/check", content=image).json()
+    chk = client.post(f"{D}/firmware/check", content=image, headers=BIN).json()
     assert chk["matches"] is True and chk["image"]["version"] == "1.00.13"
     assert chk["switch"]["model"] == "GS108E" and chk["same_version"] is False
-    other = client.post(f"{D}/firmware/check", content=_image(board="GS105E")).json()
+    other = client.post(f"{D}/firmware/check", content=_image(board="GS105E"), headers=BIN).json()
     assert other["matches"] is False
     # refusals
-    assert client.post(f"{D}/firmware", content=image).status_code == 422  # no confirmation
-    assert client.post(f"{D}/firmware?confirm=wrong", content=image).status_code == 422
-    assert client.post(f"{D}/firmware?confirm={MAC}", content=b"").status_code == 422
-    assert client.post(f"{D}/firmware?confirm={MAC}", content=b"junk" * 500).status_code == 422
-    r = client.post(f"{D}/firmware?confirm={MAC}", content=_image(board="GS105E"))
+    assert (
+        client.post(f"{D}/firmware", content=image, headers=BIN).status_code == 422
+    )  # no confirmation
+    assert client.post(f"{D}/firmware?confirm=wrong", content=image, headers=BIN).status_code == 422
+    assert client.post(f"{D}/firmware?confirm={MAC}", content=b"", headers=BIN).status_code == 422
+    assert (
+        client.post(f"{D}/firmware?confirm={MAC}", content=b"junk" * 500, headers=BIN).status_code
+        == 422
+    )
+    r = client.post(f"{D}/firmware?confirm={MAC}", content=_image(board="GS105E"), headers=BIN)
     assert r.status_code == 422 and "GS105E" in r.json()["message"]
     assert client.sim.switches[0].upgrades == 0 and not client.sim.switches[0].upgrade_mode
     # the real thing
     r = client.post(
-        f"{D}/firmware?confirm={MAC.upper()}&filename=../../etc/x y.flash", content=image
+        f"{D}/firmware?confirm={MAC.upper()}&filename=../../etc/x y.flash",
+        content=image,
+        headers=BIN,
     )
     assert r.status_code == 202 and r.json()["state"] == "running"
     status = _wait_upgrade(client)
@@ -557,10 +582,10 @@ def test_firmware_check_and_upgrade_flow(client, office):
 def test_firmware_upgrade_needs_the_switch_password(client):
     client.post("/api/discovery/scan")
     client.post("/api/devices", json={"mac": MAC})
-    r = client.post(f"{D}/firmware?confirm={MAC}", content=_image())
+    r = client.post(f"{D}/firmware?confirm={MAC}", content=_image(), headers=BIN)
     assert r.status_code == 409 and r.json()["code"] == "password_required"
     client.post(f"{D}/login", json={"password": "wrong"})
-    r = client.post(f"{D}/firmware?confirm={MAC}", content=_image())
+    r = client.post(f"{D}/firmware?confirm={MAC}", content=_image(), headers=BIN)
     assert r.status_code == 409
     assert client.sim.switches[0].upgrades == 0
 
@@ -570,7 +595,9 @@ def test_firmware_failure_is_reported(client, office):
     manager.upgrade_settle = 0.05
     manager.transport.tftp_port = 9
     manager.transport.tftp_timeout = 0.05
-    assert client.post(f"{D}/firmware?confirm={MAC}", content=_image()).status_code == 202
+    assert (
+        client.post(f"{D}/firmware?confirm={MAC}", content=_image(), headers=BIN).status_code == 202
+    )
     status = _wait_upgrade(client)
     assert status["state"] == "failed" and "stopped answering" in status["error"]
 
@@ -578,8 +605,10 @@ def test_firmware_failure_is_reported(client, office):
 def test_firmware_second_upgrade_is_refused_while_running(client, office):
     manager = client.app_.state.manager
     manager.upgrade_settle = 1.0
-    assert client.post(f"{D}/firmware?confirm={MAC}", content=_image()).status_code == 202
-    again = client.post(f"{D}/firmware?confirm={MAC}", content=_image())
+    assert (
+        client.post(f"{D}/firmware?confirm={MAC}", content=_image(), headers=BIN).status_code == 202
+    )
+    again = client.post(f"{D}/firmware?confirm={MAC}", content=_image(), headers=BIN)
     assert again.status_code == 422 and "already running" in again.json()["message"]
 
 
@@ -592,7 +621,7 @@ def test_firmware_never_comes_back(client, office):
         0,
     )
     client.sim.switches[0].reboot_seconds = 30
-    client.post(f"{D}/firmware?confirm={MAC}", content=_image())
+    client.post(f"{D}/firmware?confirm={MAC}", content=_image(), headers=BIN)
     status = _wait_upgrade(client)
     assert status["state"] == "failed" and "did not come back" in status["error"]
 
@@ -603,7 +632,7 @@ def test_firmware_too_large(client, office):
     assert client.post(
         f"{D}/firmware/check",
         content=b"x" * 10,
-        headers={"content-length": str(mgr.MAX_FIRMWARE_BYTES + 1)},
+        headers={**BIN, "content-length": str(mgr.MAX_FIRMWARE_BYTES + 1)},
     ).status_code in (413, 422, 400)
 
 
@@ -759,3 +788,60 @@ async def test_scan_tags_marks_silent_firmware(transport):
     finally:
         await t.stop()
         sim.stop()
+
+
+def test_dns_rebinding_is_refused_when_login_is_disabled(tmp_path, sim):
+    env = make_env(sim.port, sim.tftp_port, SWITCHYARD_AUTH_DISABLED="true")
+    app = create_app(cfg.load(tmp_path, env=env))
+    with TestClient(app, base_url="http://evil.example") as c:
+        r = c.post("/api/discovery/scan", headers={"Origin": "http://evil.example"})
+        assert r.status_code == 421 and r.json()["code"] == "bad_host"
+        assert c.get("/").status_code == 421
+    for base in ("http://192.168.0.5:8080", "http://localhost:8080", "http://[::1]:8080"):
+        with TestClient(app, base_url=base) as c:
+            assert c.get("/api/devices").status_code == 200, base
+
+
+def test_host_names_with_login_enabled(tmp_path, sim):
+    env = make_env(sim.port, sim.tftp_port, SWITCHYARD_SERVER_ALLOWED_HOSTS="switchyard.lan")
+    app = create_app(cfg.load(tmp_path, env=env))
+    with TestClient(app, base_url="http://switchyard.lan") as c:
+        assert c.get("/api/session").status_code == 200
+    with TestClient(app, base_url="http://other.lan") as c:
+        assert c.get("/api/session").status_code == 421
+    from switchyard.web.app import host_allowed
+
+    assert host_allowed("any.name", [], strict=False) is True  # login protects, names are free
+    assert host_allowed("any.name", [], strict=True) is False
+    assert host_allowed("10.0.0.1:8080", [], strict=True) is True
+    assert host_allowed("[fe80::1]", [], strict=True) is True
+    assert host_allowed("", [], strict=False) is False
+    assert host_allowed(None, [], strict=False) is False
+
+
+def test_cross_site_and_content_type_checks(client):
+    r = client.post("/api/logout", headers={"Sec-Fetch-Site": "cross-site"})
+    assert r.status_code == 403
+    assert (
+        client.post("/api/discovery/scan", headers={"Sec-Fetch-Site": "same-origin"}).status_code
+        == 200
+    )
+    r = client.post(
+        "/api/discovery/scan", content=b'{"a": 1}', headers={"Content-Type": "text/plain"}
+    )
+    assert r.status_code == 415 and r.json()["code"] == "bad_content_type"
+    assert client.post("/api/discovery/scan").status_code == 200  # no body, no type needed
+
+
+def test_request_bodies_are_limited(client, office):
+    big = {"notes": "x" * (1024 * 1024 + 10)}
+    assert client.patch(D, json=big).status_code == 413
+
+    def chunks():
+        for _ in range(20):
+            yield b"x" * (1024 * 1024)
+
+    r = client.post(f"{D}/firmware/check", content=chunks(), headers=BIN)  # chunked, no length
+    assert r.status_code == 413
+    r = client.post("/api/login", json={"password": "x" * 300})
+    assert r.status_code == 422  # passwords are capped before hashing

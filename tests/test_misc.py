@@ -118,3 +118,22 @@ def test_cli_sim_runs_until_cancelled(monkeypatch):
 
 def test_main_module_importable():
     assert sys.modules["switchyard.__main__"].main
+
+
+def test_cli_reset_password(tmp_path, capsys):
+    import json
+
+    assert cli.main(["--data", str(tmp_path), "reset-password"]) == 0
+    err = capsys.readouterr().err
+    assert "Web interface password:" in err and "Restart Switchyard" in err
+    password = err.split("Web interface password:")[1].split()[0]
+    stored = json.loads((tmp_path / "secrets.json").read_text())
+    from switchyard.web.auth import _hash
+
+    assert _hash(password, bytes.fromhex(stored["salt"])) == stored["hash"]
+
+
+def test_cli_reset_password_refuses_a_configured_password(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("SWITCHYARD_AUTH_PASSWORD", "configured-1")
+    assert cli.main(["--data", str(tmp_path), "reset-password"]) == 1
+    assert "change it there" in capsys.readouterr().err

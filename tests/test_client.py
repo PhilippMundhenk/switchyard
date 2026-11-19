@@ -539,3 +539,40 @@ def test_tftp_target_needs_an_address():
     assert t.tftp_target("192.168.0.9") == ("192.168.0.9", 69)
     with pytest.raises(ValueError):
         t.tftp_target(None)
+
+
+async def test_probe_ignores_answers_from_other_hosts(sim):
+    """Only the probed address may answer, so nobody else can slip in a fake switch."""
+    t = Transport(client_port=0, targets=[f"127.0.0.1:{sim.port}"], timeout=0.3, retries=0)
+    await t.start()
+    try:
+        t.targets = []  # behave like the real network: replies must come from the probed host
+        t._listener_send = t._listener.sendto
+        sent = []
+        t._listener.sendto = lambda raw, dest: (
+            sent.append(dest) or t._listener_send(raw, ("127.0.0.1", sim.port))
+        )
+        assert await probe(t, "192.0.2.10", 0.2) is None  # the answer came from 127.0.0.1
+        assert sent and sent[0] == ("192.0.2.10", t.device_port)
+        assert await probe(t, "127.0.0.1", 0.3) is not None
+    finally:
+        await t.stop()
+
+
+async def test_unicast_uses_the_wildcard_socket(sim):
+    from switchyard.nsdp.netif import Interface
+
+    iface = Interface("fake0", "127.0.0.1", bytes.fromhex("020000000001"))
+    t = Transport(client_port=0, enumerate_interfaces=lambda: [iface])
+    await t.start()
+    try:
+        via_route, via_listener = [], []
+        t.routes[0].transport.sendto = lambda raw, dest: via_route.append(dest)
+        t._listener.sendto = lambda raw, dest: via_listener.append(dest)
+        t._send(Packet(Op.READ_REQUEST, seq=1), "203.0.113.7")
+        assert via_listener == [("203.0.113.7", t.device_port)] and via_route == []
+        t._send(Packet(Op.READ_REQUEST, seq=2), None)  # broadcast still per interface
+        assert via_route == [("255.255.255.255", t.device_port)]
+        assert t.packet_log[0]["peer"] == f"203.0.113.7:{t.device_port}"
+    finally:
+        await t.stop()

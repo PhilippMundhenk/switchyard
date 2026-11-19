@@ -55,6 +55,21 @@ async def _discover(args) -> int:
     return 0 if found else 1
 
 
+def _reset_password(args) -> int:
+    from .web.auth import announce, reset_password
+
+    config = load(args.data)
+    if config["auth.password"]:
+        print(
+            "The password is set by auth.password / SWITCHYARD_AUTH_PASSWORD; change it there.",
+            file=sys.stderr,
+        )
+        return 1
+    announce(reset_password(config.data_dir))
+    print("Restart Switchyard for the new password to take effect.", file=sys.stderr)
+    return 0
+
+
 async def _sim(args) -> int:
     from .sim import Simulator, demo_switches
 
@@ -73,10 +88,15 @@ def main(argv: list[str] | None = None) -> int:
     serve = sub.add_parser("serve", help="run the web interface (default)")
     serve.add_argument("--demo", action="store_true", help="use simulated switches")
     sub.add_parser("discover", help="search the network once and print what answers")
+    sub.add_parser(
+        "reset-password", help="generate a new web interface password (takes effect at next start)"
+    )
     sim = sub.add_parser("sim", help="run simulated switches for development")
     sim.add_argument("--host", default="127.0.0.1")
     sim.add_argument("--port", type=int, default=63322)
     args = parser.parse_args(argv)
+    if args.command == "reset-password":
+        return _reset_password(args)
     if args.command == "discover":
         return asyncio.run(_discover(args))
     if args.command == "sim":

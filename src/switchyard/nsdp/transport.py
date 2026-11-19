@@ -196,9 +196,22 @@ class Transport:
     def _send(self, packet: Packet, address: str | None) -> None:
         if not self.routes:
             raise RuntimeError("transport is not started")
+        if address and not self.targets and self._listener is not None:
+            # Unicast goes through the wildcard socket: the kernel then picks the source
+            # address by route, which matters for switches behind a gateway.
+            packet.host_mac = self.routes[0].mac
+            raw = packet.encode()
+            dest = (address, self.device_port)
+            try:
+                self._listener.sendto(raw, dest)
+            except OSError as exc:  # pragma: no cover - OS dependent
+                log.debug("unicast to %s failed: %s", address, exc)
+                return
+            self._record("tx", packet, raw, f"{dest[0]}:{dest[1]}")
+            return
         for route in self.routes:
             packet.host_mac = route.mac
-            dest = (address, self.device_port) if address and not self.targets else route.broadcast
+            dest = route.broadcast
             raw = packet.encode()
             try:
                 route.transport.sendto(raw, dest)
@@ -206,8 +219,6 @@ class Transport:
                 log.debug("send on %s failed: %s", route.name, exc)
                 continue
             self._record("tx", packet, raw, f"{dest[0]}:{dest[1]} via {route.name}")
-            if address and not self.targets:
-                break  # unicast: the routing table picks the interface
 
     async def collect(
         self, op: Op, tlvs: list[tuple[int, bytes]], timeout: float = 2.0

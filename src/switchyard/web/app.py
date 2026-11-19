@@ -58,7 +58,7 @@ PortMap = dict[int, int]
 
 
 class LoginBody(BaseModel):
-    password: str
+    password: str = Field(max_length=200)
 
 
 class PasswordBody(BaseModel):
@@ -191,6 +191,81 @@ class DiffBody(BaseModel):
     stored: str | None = None
 
 
+JSON_LIMIT = 1024 * 1024
+FIRMWARE_LIMIT = 16 * 1024 * 1024 + 64 * 1024
+
+
+def host_allowed(host_header: str | None, allowed: list[str], strict: bool) -> bool:
+    """IP literals and localhost always pass; names only when listed, or when not strict."""
+    host = (host_header or "").strip().lower()
+    if host.startswith("["):  # [IPv6]:port
+        host = host[1 : host.find("]")] if "]" in host else host
+    else:
+        host = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+    if not host:
+        return False
+    if host == "localhost" or host in {h.lower() for h in allowed}:
+        return True
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return not strict and not allowed
+
+
+class BodyLimit:
+    """Refuse oversized request bodies (413), also when they arrive chunked."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        limit = (
+            FIRMWARE_LIMIT
+            if scope["path"].endswith(("/firmware", "/firmware/check"))
+            else JSON_LIMIT
+        )
+        declared = dict(scope.get("headers") or []).get(b"content-length")
+        if declared and declared.isdigit() and int(declared) > limit:
+            return await _too_large(send)
+        seen = 0
+
+        async def counted():
+            nonlocal seen
+            message = await receive()
+            if message["type"] == "http.request":
+                seen += len(message.get("body", b""))
+                if seen > limit:
+                    raise _TooLarge
+            return message
+
+        try:
+            await self.app(scope, counted, send)
+        except _TooLarge:
+            await _too_large(send)
+
+
+class _TooLarge(Exception):
+    pass
+
+
+async def _too_large(send) -> None:
+    body = b'{"code":"too_large","message":"The request is too large."}'
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
+
+
 def error(status: int, code: str, message: str, **extra) -> JSONResponse:
     return JSONResponse({"code": code, "message": message, **extra}, status_code=status)
 
@@ -244,6 +319,7 @@ def create_app(config: Config) -> FastAPI:
         redoc_url=None,
     )
     audit = Audit(config.data_dir / "audit.log")
+    app.add_middleware(BodyLimit)
     app.state.auth = auth
     app.state.audit = audit
     app.state.simulator = simulator
@@ -256,9 +332,20 @@ def create_app(config: Config) -> FastAPI:
 
     open_paths = {"/api/login", "/api/session", "/api/health", "/health"}
 
+    strict_hosts = bool(config["auth.disabled"])
+
     @app.middleware("http")
     async def guard(request: Request, call_next):
         path = request.url.path
+        if not host_allowed(
+            request.headers.get("host"), config["server.allowed_hosts"], strict_hosts
+        ):
+            return error(
+                421,
+                "bad_host",
+                "This host name is not allowed. Use the IP address or add the name to "
+                "server.allowed_hosts.",
+            )
         match = MAC_PATH.match(path)
         if match:  # accept upper case and dashes in MAC addresses
             mac = match.group(2).lower().replace("-", ":")
@@ -276,6 +363,15 @@ def create_app(config: Config) -> FastAPI:
                 origin = request.headers.get("origin")
                 if origin and urlsplit(origin).netloc != request.headers.get("host"):
                     return error(403, "bad_origin", "Cross-site request refused.")
+                fetch_site = request.headers.get("sec-fetch-site")
+                if fetch_site and fetch_site not in ("same-origin", "none"):
+                    return error(403, "bad_origin", "Cross-site request refused.")
+                has_body = request.headers.get("content-length", "0") != "0" or (
+                    "transfer-encoding" in request.headers
+                )
+                kind = request.headers.get("content-type", "").split(";")[0].strip().lower()
+                if has_body and kind not in ("application/json", "application/octet-stream"):
+                    return error(415, "bad_content_type", "Send JSON (or the firmware as binary).")
             if path not in open_paths and not auth.valid(request.cookies.get(COOKIE)):
                 return error(401, "login_required", "Please log in.")
             if (
@@ -368,7 +464,7 @@ def create_app(config: Config) -> FastAPI:
     @api.post("/login")
     def login(body: LoginBody, request: Request):
         try:
-            token = auth.login(body.password)
+            token = auth.login(body.password, request.client.host if request.client else "?")
         except PermissionError as exc:
             return error(
                 429,

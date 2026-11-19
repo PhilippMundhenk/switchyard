@@ -90,8 +90,12 @@ async def probe(transport: Transport, address: str, timeout: float = 1.5) -> dic
     seq = transport._next_seq()
     future: asyncio.Future = asyncio.get_running_loop().create_future()
 
+    # Only the probed host may answer (or the fixed target that stands in for it), so
+    # nobody else on the network can slip in a switch of their own.
+    allowed = {address} | {t.partition(":")[0] for t in transport.targets}
+
     def on_reply(packet: Packet, addr: tuple) -> None:
-        if not future.done():
+        if addr[0] in allowed and not future.done():
             future.set_result((packet, addr))
 
     transport._waiters[seq] = on_reply

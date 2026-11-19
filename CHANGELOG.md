@@ -4,6 +4,19 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Security
+- Login lockout per client address instead of global, so nobody can lock out the admin (#43).
+- Host name check against DNS rebinding when login is disabled; new `server.allowed_hosts` (#44).
+- Request size limits: 1 MB, firmware 16 MB, also for chunked uploads (#45).
+- Add by IP accepts only the probed address's answer (#46).
+- Write requests also check `Sec-Fetch-Site` and need a JSON or binary content type (#47).
+- The generated password is printed once on stderr regardless of the log level;
+  new `switchyard reset-password` (#48).
+
+### Fixed
+- Add by IP through a router on hosts with several interfaces: unicast now leaves with the
+  source address the routing table picks (#49).
+
 ### Added
 - First version: discovery, multi-switch list, port status and statistics, name and IP settings,
   port-based and 802.1Q VLANs, QoS and rate limits, port mirroring, IGMP snooping, loop detection,

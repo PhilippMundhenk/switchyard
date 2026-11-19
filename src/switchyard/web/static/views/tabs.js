@@ -496,7 +496,7 @@ async function firmware(host, S) {
     if (!f) return;
     try {
       const buf = await f.arrayBuffer();
-      const r = await fetch(`/api${dev(S.mac)}/firmware/check`, { method: 'POST', credentials: 'same-origin', body: buf });
+      const r = await fetch(`/api${dev(S.mac)}/firmware/check`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body: buf });
       const body = await r.json();
       if (!r.ok) throw new Error(body.message || 'The file was refused.');
       checked = { buf, name: f.name, info: body };
@@ -516,7 +516,7 @@ async function firmware(host, S) {
     if (!typed) return;
     await run(go, () => withSwitchAuth(S.mac, S.name, async () => {
       const q = new URLSearchParams({ confirm: typed.toLowerCase(), force: String(force.checked), filename: checked.name });
-      const r = await fetch(`/api${dev(S.mac)}/firmware?${q}`, { method: 'POST', credentials: 'same-origin', body: checked.buf });
+      const r = await fetch(`/api${dev(S.mac)}/firmware?${q}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body: checked.buf });
       const body = await r.json();
       if (!r.ok) throw new ApiError(r.status, body);
       showStatus(body); watch();

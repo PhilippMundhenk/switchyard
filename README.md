@@ -47,8 +47,12 @@ interface at all, so this is the only way to configure them.
    Or without Docker: `pip install .` then `switchyard serve`.
 
 2. Open `http://<host>:8080` and sign in. Without `SWITCHYARD_AUTH_PASSWORD` a password is
-   generated and printed once in the log.
+   generated on the first start and printed once, in a framed block on the console
+   (`docker compose logs switchyard`). Lost it? Run `switchyard reset-password`
+   (`docker compose run --rm switchyard reset-password`) and restart.
 3. Press *Search network* and add your switches. A new switch has the password `password`.
+   Switch on another subnet, or the search finds nothing? Use *Add by IP address*: Switchyard then
+   talks to that address directly, also through a router.
 4. Reads need no password. When you change something, Switchyard asks for the switch password.
 
 Want to look around first? `docker run --rm -p 8080:8080 -e SWITCHYARD_DEMO_ENABLED=true -e SWITCHYARD_AUTH_PASSWORD=demo ghcr.io/philippmundhenk/switchyard` starts four simulated switches.
@@ -87,6 +91,8 @@ Most settings have a sensible default. The common ones:
 | Variable | Meaning |
 | --- | --- |
 | `SWITCHYARD_AUTH_PASSWORD` | Password of the web interface |
+| `SWITCHYARD_AUTH_DISABLED` | `true` turns the login off (only behind something that authenticates, or on a trusted network; then only IP addresses, `localhost` and `SWITCHYARD_SERVER_ALLOWED_HOSTS` are accepted as host names) |
+| `SWITCHYARD_SERVER_ALLOWED_HOSTS` | Host names allowed in the browser address, e.g. `switchyard.lan` |
 | `SWITCHYARD_SERVER_PORT` | Web port, default 8080 |
 | `SWITCHYARD_NSDP_INTERFACES` | Search only these interfaces, e.g. `eth0` |
 | `SWITCHYARD_NSDP_TARGETS` | Directed broadcast or switch addresses for routed networks |

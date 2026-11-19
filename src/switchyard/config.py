@@ -15,6 +15,14 @@ SCHEMA: list[tuple[str, str, object, str]] = [
     ("server", "port", 8080, "Port of the web interface."),
     (
         "server",
+        "allowed_hosts",
+        [],
+        'Host names the web interface may be reached by, e.g. ["switchyard.lan"]. IP addresses\n'
+        "# and localhost always work. Empty: any name while a password is required; only IP\n"
+        "# addresses and localhost when auth.disabled is true (protection against DNS rebinding).",
+    ),
+    (
+        "server",
         "forwarded_allow_ips",
         "127.0.0.1",
         "Addresses of reverse proxies whose X-Forwarded-* headers are trusted (comma\n"

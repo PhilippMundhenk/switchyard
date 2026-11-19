@@ -9,8 +9,10 @@
 | Changes are refused with "not supported" | The model does not have that feature. The tab says so. |
 | "The switch is not answering" after a reboot | It takes about 30 seconds. Press *Try again*. |
 | Locked out after a VLAN or IP change | Press the reset button of the switch. |
-| Cannot log in to Switchyard | Without a configured password one is generated on first start and printed once in the log. Delete `secrets.json` in the data folder to generate a new one. |
-| Too many failed logins | Wait a minute. |
+| Cannot log in to Switchyard | Without a configured password one is generated on first start and printed once on the console. Run `switchyard reset-password` (Docker: `docker compose run --rm switchyard reset-password`) and restart. |
+| "This host name is not allowed" (421) | Login is disabled, so only IP addresses and `localhost` are accepted, or the name is not in `server.allowed_hosts`. Add the name there. |
+| *Add by IP address* says no switch answers | Check that UDP 63321/63322 pass the router or firewall. Some firmware answers only by broadcast, which no router forwards; manage such a switch from its own segment. |
+| Too many failed logins | Wait a minute. The lock applies only to the address that failed. |
 
 ## Questions
 

@@ -46,7 +46,11 @@ for your browsers.
 
 By default Switchyard searches every interface that is up and has an IPv4 address. Limit it with
 `nsdp.interfaces`. For switches on other subnets list directed broadcast or unicast addresses in
-`nsdp.targets`, or add them by IP address in the UI. A router that does not forward UDP broadcast
+`nsdp.targets`, or add them by IP address in the UI (*Switches*, *Add by IP address*).
+Switchyard sends to that address directly; the operating system chooses the source address by
+route, so the switch can answer through the gateway. Some firmware answers every request by
+broadcast instead of to the sender; such answers do not cross a router, and the switch can then
+only be managed from its own network segment. A router that does not forward UDP broadcast
 blocks the first; unicast to a known address works across routers.
 
 ## TLS and proxies
