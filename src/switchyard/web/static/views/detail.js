@@ -11,7 +11,10 @@ export async function renderDetail(main, ctx, route) {
   const header = h('div', { class: 'page-head' });
   const tabs = h('nav', { class: 'tabs', 'aria-label': 'Switch sections' },
     ...TABS.map((t) => h('a', { href: `#/switch/${encodeURIComponent(mac)}/${t.id}`, 'aria-current': t.id === tab.id ? 'page' : null, 'data-testid': `tab-${t.id}` }, t.label)));
-  main.append(h('p', {}, h('a', { href: '#/' }, '← All switches')), header, tabs, host);
+  const picker = h('select', { class: 'tab-select', 'aria-label': 'Section', 'data-testid': 'tab-select' },
+    ...TABS.map((t) => h('option', { value: t.id, selected: t.id === tab.id }, t.label)));
+  picker.addEventListener('change', () => ctx.navigate(`#/switch/${encodeURIComponent(mac)}/${picker.value}`));
+  main.append(h('p', { class: 'back' }, h('a', { href: '#/' }, '← All switches')), header, tabs, picker, host);
 
   const S = {
     mac, state: null, ctx, host,

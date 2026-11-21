@@ -1,5 +1,6 @@
 import { get } from '../api.js';
 import { clear, h } from '../util.js';
+import { stackable } from './tabs.js';
 
 const LABELS = { link_up: 'link up', link_down: 'link down', speed_change: 'speed', online: 'online', offline: 'offline' };
 
@@ -23,6 +24,7 @@ export async function renderEvents(main, ctx) {
       body.append(h('tr', { class: 'event-row', 'data-testid': 'event-row' },
         h('td', {}, new Date(e.time * 1000).toLocaleString()), h('td', {}, e.switch), h('td', {}, h('span', { class: `tag ${e.type}` }, LABELS[e.type] || e.type)), h('td', {}, e.text)));
     }
+    stackable(body.parentNode);
   };
   const fetchMore = async () => {
     const { events: more } = await get(`/events?after=${last}`);
@@ -40,6 +42,7 @@ export async function renderEvents(main, ctx) {
       auditBody.append(h('tr', { 'data-testid': 'audit-row' }, h('td', {}, new Date(e.time * 1000).toLocaleString()), h('td', {}, e.role),
         h('td', { class: 'mono' }, `${e.method} ${e.route.replace('/api/devices/{mac}', '')}`), h('td', { class: 'mono' }, e.switch || '–')));
     }
+    stackable(auditBody.parentNode);
   };
   await drawAudit();
   filter.addEventListener('change', draw);

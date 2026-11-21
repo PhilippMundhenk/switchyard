@@ -14,6 +14,9 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
   new `switchyard reset-password` (#48).
 
 ### Fixed
+- Phone layout: no sideways scrolling; section drop-down instead of the tab strip, one block per port in tables, VLAN and LAG matrices with ports as rows (#55).
+- GS108E v1 firmware that answers an empty reply when a read contains an unknown setting: identity, mirroring and IGMP were missing (#53).
+- Stray 'null' text above the header outside demo mode (#54).
 - An unwritable data folder (bind mount owned by another user) stops with a clear message
   instead of a traceback; the requirements are documented (#52).
 - Add by IP through a router on hosts with several interfaces: unicast now leaves with the

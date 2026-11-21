@@ -1,6 +1,7 @@
 import { get, post } from '../api.js';
 import { clear, fmtAgo, h, isIPv4 } from '../util.js';
 import { modal, run, toast } from '../ui.js';
+import { stackable } from './tabs.js';
 
 function card(d) {
   const info = d.info || {};
@@ -107,8 +108,8 @@ export async function renderSwitches(main, ctx) {
         h('td', {}, h('button', { class: 'btn small primary', 'data-testid': 'add-found', onclick: async (e) => {
           await run(e.target, async () => { await post('/devices', { mac: f.mac }); toast(`Added ${f.model || 'switch'}.`); await refresh(); });
         } }, 'Add'))));
-      body.append(h('div', { class: 'table-wrap' }, h('table', {},
-        h('thead', {}, h('tr', {}, ...['Name', 'Model', 'IP', 'MAC', 'Firmware', ''].map((t) => h('th', {}, t)))), h('tbody', {}, rows))));
+      body.append(h('div', { class: 'table-wrap' }, stackable(h('table', {},
+        h('thead', {}, h('tr', {}, ...['Name', 'Model', 'IP', 'MAC', 'Firmware', ''].map((t) => h('th', {}, t)))), h('tbody', {}, rows)))));
     }
     foundBox.append(body);
   }

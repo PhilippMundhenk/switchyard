@@ -600,3 +600,38 @@ def test_no_stray_text_outside_demo_mode(page, tmp_path):
         )
     finally:
         server.stop()
+
+
+def test_phone_layout_needs_no_sideways_scrolling(app):
+    add_switch(app, MAC, "password")
+    api(app, "PUT", f"/devices/{MAC}/vlan/mode", {"mode": "dot1q_advanced"})
+    app.set_viewport_size({"width": 390, "height": 844})
+    open_tab(app, "overview")
+    picker = app.get_by_test_id("tab-select")
+    expect(picker).to_be_visible()
+    expect(app.get_by_test_id("tab-vlan")).to_be_hidden()  # the tab strip is replaced on phones
+    picker.select_option("vlan")
+    expect(app.get_by_test_id("vlan-matrix")).to_be_visible()
+    for tab in (
+        "overview",
+        "ports",
+        "vlan",
+        "qos",
+        "features",
+        "ports-config",
+        "lag",
+        "cable",
+        "firmware",
+        "maintenance",
+    ):
+        open_tab(app, tab)
+        app.wait_for_timeout(300)
+        wide = app.evaluate(
+            "[document.documentElement.scrollWidth, window.innerWidth, ...[...document"
+            ".querySelectorAll('.table-wrap')].map(e => e.scrollWidth - e.clientWidth)]"
+        )
+        assert wide[0] <= wide[1] + 1 and all(x <= 1 for x in wide[2:]), (tab, wide)
+    # the statistics become one block per port, each value with its label
+    open_tab(app, "ports")
+    assert app.locator('[data-testid="stat-1"] td[data-label="Received"]').count() == 1
+    assert app.locator("table.stack thead").first.is_hidden()

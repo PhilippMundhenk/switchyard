@@ -161,3 +161,38 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
 .tile b { font-size: 1.4rem; }
 td.num, th.num { white-space: nowrap; }
 [data-testid="stats-body"] td { white-space: nowrap; }
+
+/* ---------------------------------------------------------- small screens */
+.tab-select { display: none; }
+.matrix .porthead { text-align: left; white-space: nowrap; }
+.matrix .pname, .matrix .vname { display: block; font-weight: 400; max-width: 7em; overflow: hidden; text-overflow: ellipsis; }
+.matrix th .btn.xs { padding: 0 6px; font-size: .75rem; margin-top: 2px; }
+.check.mini { display: inline-flex; gap: 4px; font-weight: 400; font-size: .8rem; margin: 2px 0 0; }
+@media (max-width: 640px) {
+  .topbar { position: static; padding: 8px 10px; }
+  .topbar-actions .btn { padding: 3px 8px; }
+  .nav a { padding: 6px 8px; }
+  main { padding: 10px 10px 24px; }
+  .card { padding: 12px; border-radius: 8px; }
+  .page-head { margin-bottom: 8px; }
+  .page-head h1 { font-size: 1.25rem; }
+  p.back { margin: 0 0 6px; }
+  .tabs { display: none; }
+  .tab-select { display: block; width: 100%; max-width: none; margin: 0 0 12px; font-weight: 600; }
+  input[type=text], input[type=password], input[type=number], select, textarea { max-width: none; }
+  table.stack thead { display: none; }
+  table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: 100%; }
+  table.stack tr { border-bottom: 1px solid var(--border); padding: 6px 0; }
+  table.stack td { display: flex; justify-content: flex-end; align-items: center; gap: 6px; border: 0; padding: 3px 0; white-space: normal; text-align: right; }
+  table.stack td::before { content: attr(data-label); color: var(--muted); font-weight: 600; text-align: left; flex: none; margin-right: auto; }
+  table.stack.compact tr { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
+  table.stack.compact td:first-child { grid-column: 1 / -1; }
+  table.stack.compact td { font-size: .9rem; }
+  table.stack td > select { width: auto; max-width: 62%; }
+  table.stack td:first-child { font-weight: 700; }
+  .matrix .cell { width: 34px; height: 30px; }
+  .matrix th, .matrix td { padding: 3px 2px; }
+  .matrix select { width: 58px; }
+  .chart { max-height: 200px; }
+  .modal { padding: 16px; }
+}

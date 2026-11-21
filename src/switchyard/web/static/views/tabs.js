@@ -6,6 +6,18 @@ import { confirmDialog, field, modal, run, section, select, showError, toast, un
 
 const portName = (S, p) => (S.state.device.port_labels || {})[p] || '';
 const vlanName = (S, id) => (S.state.device.vlan_names || {})[id] || '';
+const portHead = (S, p) => h('th', { scope: 'row', class: 'porthead' }, String(p), portName(S, p) ? h('small', { class: 'muted pname' }, portName(S, p)) : null);
+
+// On small screens a table with this class shows one block per row, each cell with its column name.
+export function stackable(table) {
+  const names = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+  table.classList.add('stack');
+  for (const row of table.querySelectorAll('tbody tr')) {
+    [...row.children].forEach((cell, i) => { if (names[i]) cell.dataset.label = names[i]; });
+  }
+  return table;
+}
+
 const speedClass = (p) => (p.up ? `s${Math.min(p.speed_mbps || 10, 10000)}` : 'down');
 
 function portPanel(ports, labels = {}) {
@@ -118,13 +130,14 @@ async function ports(host, S) {
         h('td', { class: 'num' }, String(p.crc_errors ?? 0))));
     }
     previous = { t, rows: new Map(rows.map((p) => [p.port, p])) };
+    if (body.parentNode) stackable(body.parentNode);
   };
   draw(S.state.ports, Date.now());
   const clearBtn = h('button', { class: 'btn', 'data-testid': 'clear-counters' }, 'Clear counters');
   clearBtn.addEventListener('click', () => applier(S)(clearBtn, () => post(`${dev(S.mac)}/stats/reset`), 'Counters cleared.'));
   host.append(section('Port status and statistics',
-    h('div', { class: 'table-wrap' }, h('table', {},
-      h('thead', {}, h('tr', {}, ...['Port', 'Link', 'Duplex', 'Received', 'Rx rate', 'Sent', 'Tx rate', 'CRC errors'].map((t, i) => h('th', { class: i > 2 ? 'num' : '' }, t)))), body)),
+    h('div', { class: 'table-wrap' }, stackable(h('table', { class: 'compact' },
+      h('thead', {}, h('tr', {}, ...['Port', 'Link', 'Duplex', 'Received', 'Rx rate', 'Sent', 'Tx rate', 'CRC errors'].map((t, i) => h('th', { class: i > 2 ? 'num' : '' }, t)))), body))),
     h('p', {}, clearBtn)));
   poll(S, async () => draw((await get(`${dev(S.mac)}/ports`)).ports, Date.now()), 3000);
 
@@ -140,7 +153,8 @@ async function ports(host, S) {
       chartBox.append(h('p', { class: 'muted', 'data-testid': 'chart-empty' }, hist.interval ? `Collecting data… the monitor reads the ports every ${hist.interval} s.` : 'The monitor is off. Set monitor.interval_seconds to record traffic history.'));
       return;
     }
-    chartBox.append(drawChart(points), h('div', { class: 'chart-legend' }, h('span', {}, h('i', { class: 'rx' }), 'Received'), h('span', {}, h('i', { class: 'tx' }), 'Sent')));
+    const width = Math.max(320, Math.min(900, chartBox.clientWidth || 760));
+    chartBox.append(drawChart(points, { width, height: width < 500 ? 200 : 220 }), h('div', { class: 'chart-legend' }, h('span', {}, h('i', { class: 'rx' }), 'Received'), h('span', {}, h('i', { class: 'tx' }), 'Sent')));
   };
   which.addEventListener('change', () => drawHistory().catch(showError));
   range.addEventListener('change', () => drawHistory().catch(showError));
@@ -176,8 +190,7 @@ async function vlan(host, S) {
   const matrixBox = h('div', { class: 'table-wrap', 'data-testid': 'vlan-matrix' });
   const applyBtn = h('button', { class: 'btn primary', 'data-testid': 'vlan-apply' }, 'Apply');
   const discard = h('button', { class: 'btn', 'data-testid': 'vlan-discard' }, 'Discard changes');
-  const head = (extra) => h('thead', {}, h('tr', {}, h('th', {}, 'VLAN'), ...allPorts.map((p) => h('th', {}, String(p))), extra));
-
+  
   if (v.mode.startsWith('port')) {
     const original = v.port_vlans.map((g) => ({ id: g.id, members: new Set(g.members) }));
     let model = original.map((g) => ({ id: g.id, members: new Set(g.members) }));
@@ -186,9 +199,11 @@ async function vlan(host, S) {
       const dirty = snapshot(model) !== snapshot(original);
       dirtyNote.hidden = !dirty; applyBtn.disabled = !dirty;
       S.ctx.setDirty(() => dirty);
-      clear(matrixBox).append(h('table', { class: 'matrix' }, head(null), h('tbody', {}, ...model.map((g) => h('tr', { 'data-testid': `vlan-row-${g.id}` },
-        h('td', {}, `Group ${g.id}`), ...allPorts.map((p) => h('td', {}, h('button', { class: `cell ${g.members.has(p) ? 'M' : ''}`, 'aria-pressed': String(g.members.has(p)), 'aria-label': `Group ${g.id}, port ${p}`, 'data-testid': `cell-${g.id}-${p}`,
-          onclick: () => { if (g.members.has(p)) g.members.delete(p); else g.members.add(p); draw(); } }, g.members.has(p) ? '✓' : '–'))))))));
+      clear(matrixBox).append(h('table', { class: 'matrix' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'Port'), ...model.map((g) => h('th', { 'data-testid': `vlan-row-${g.id}` }, `Group ${g.id}`)))),
+        h('tbody', {}, ...allPorts.map((p) => h('tr', {}, portHead(S, p),
+          ...model.map((g) => h('td', {}, h('button', { class: `cell ${g.members.has(p) ? 'M' : ''}`, 'aria-pressed': String(g.members.has(p)), 'aria-label': `Group ${g.id}, port ${p}`, 'data-testid': `cell-${g.id}-${p}`,
+            onclick: () => { if (g.members.has(p)) g.members.delete(p); else g.members.add(p); draw(); } }, g.members.has(p) ? '✓' : '–'))))))));
     };
     draw();
     applyBtn.addEventListener('click', () => apply(applyBtn, () => put(`${dev(S.mac)}/vlan/port-based`, { vlans: model.map((g) => ({ id: g.id, members: [...g.members].sort((a, b) => a - b) })) }), 'VLANs saved.'));
@@ -229,13 +244,15 @@ async function vlan(host, S) {
       if (!options.some(([id]) => Number(id) === pvid[p])) options.unshift([pvid[p], `${pvid[p]} !`]);
       const sel = select(options, pvid[p], { 'aria-label': `PVID of port ${p}`, 'data-testid': `pvid-${p}` });
       sel.addEventListener('change', () => { pvid[p] = Number(sel.value); draw(); });
-      return h('td', {}, sel);
+      return h('td', { class: 'pvid' }, sel);
     };
-    clear(matrixBox).append(h('table', { class: 'matrix' }, head(h('th', {}, '')),
-      h('tbody', {}, ...vlans.map((vl) => h('tr', { 'data-testid': `vlan-row-${vl.id}` }, h('td', {}, `VLAN ${vl.id}`, vlanName(S, vl.id) ? h('small', { class: 'muted' }, ` ${vlanName(S, vl.id)}`) : null), ...allPorts.map((p) => h('td', {}, cellOf(vl, p))),
-        h('td', {}, vl.id === 1 ? null : h('button', { class: 'btn small ghost', 'aria-label': `Remove VLAN ${vl.id}`, 'data-testid': `remove-vlan-${vl.id}`,
-          onclick: () => { vlans = vlans.filter((x) => x !== vl); for (const p of allPorts) if (pvid[p] === vl.id) pvid[p] = 1; draw(); } }, 'Remove')))),
-        h('tr', { class: 'pvid-row' }, h('td', {}, h('b', {}, 'PVID')), ...allPorts.map(pvidCell), h('td', {})))));
+    const vlanHead = (vl) => h('th', { 'data-testid': `vlan-row-${vl.id}` },
+      h('div', {}, `VLAN ${vl.id}`), vlanName(S, vl.id) ? h('small', { class: 'muted vname' }, vlanName(S, vl.id)) : null,
+      vl.id === 1 ? null : h('button', { class: 'btn small ghost xs', 'aria-label': `Remove VLAN ${vl.id}`, 'data-testid': `remove-vlan-${vl.id}`, title: `Remove VLAN ${vl.id}`,
+        onclick: () => { vlans = vlans.filter((x) => x !== vl); for (const p of allPorts) if (pvid[p] === vl.id) pvid[p] = 1; draw(); } }, '✕'));
+    clear(matrixBox).append(h('table', { class: 'matrix' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Port'), ...vlans.map(vlanHead), h('th', {}, 'PVID'))),
+      h('tbody', {}, ...allPorts.map((p) => h('tr', {}, portHead(S, p), ...vlans.map((vl) => h('td', {}, cellOf(vl, p))), pvidCell(p))))));
   };
   addBtn.addEventListener('click', () => {
     const id = Number(newId.value);
@@ -271,7 +288,7 @@ async function qos(host, S) {
   const rates = Object.entries(S.state.rate_codes).map(([code, kbit]) => [code, fmtLimit(kbit)]);
   const mode = select([['dot1p', '802.1p based'], ['port', 'Port based']], q.mode, { 'data-testid': 'qos-mode' });
   const prio = {}; const ingress = {}; const egress = {}; const storm = {};
-  const table = h('table', {}, h('thead', {}, h('tr', {}, ...['Port', 'Priority', 'Ingress limit', 'Egress limit', 'Storm control rate'].map((t) => h('th', {}, t)))),
+  const table = h('table', { class: 'controls' }, h('thead', {}, h('tr', {}, ...['Port', 'Priority', 'Ingress limit', 'Egress limit', 'Storm control rate'].map((t) => h('th', {}, t)))),
     h('tbody', {}, ...allPorts.map((p) => {
       prio[p] = select(['high', 'medium', 'normal', 'low'].map((x) => [x, x[0].toUpperCase() + x.slice(1)]), q.priorities[p] || 'normal', { 'aria-label': `Priority of port ${p}`, 'data-testid': `prio-${p}` });
       ingress[p] = select(rates, q.ingress[p] ?? 0, { 'aria-label': `Ingress limit of port ${p}`, 'data-testid': `ingress-${p}` });
@@ -279,6 +296,7 @@ async function qos(host, S) {
       storm[p] = select(rates, q.storm_rates[p] ?? 0, { 'aria-label': `Storm control rate of port ${p}`, 'data-testid': `storm-${p}` });
       return h('tr', {}, h('td', {}, String(p)), h('td', {}, prio[p]), h('td', {}, ingress[p]), h('td', {}, egress[p]), h('td', {}, storm[p]));
     })));
+  stackable(table);
   const stormOn = h('input', { type: 'checkbox', checked: Boolean(q.storm_control), disabled: q.storm_control === null, 'data-testid': 'storm-enabled' });
   const sync = () => { for (const p of allPorts) { prio[p].disabled = mode.value !== 'port'; storm[p].disabled = !stormOn.checked; } };
   mode.addEventListener('change', sync); stormOn.addEventListener('change', sync); sync();
@@ -365,8 +383,8 @@ async function cable(host, S) {
     clear(results).append(h('p', { class: 'muted' }, 'Testing… the link on a tested port may drop briefly.'));
     const done = await run(run_, () => withSwitchAuth(S.mac, S.name, () => post(`${dev(S.mac)}/cable-test`, { ports: selected })));
     clear(results);
-    if (done) results.append(h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Port'), h('th', {}, 'Result'), h('th', { class: 'num' }, 'Fault distance (m)'))),
-      h('tbody', {}, ...done.results.map((r) => h('tr', { 'data-testid': `cable-${r.port}` }, h('td', {}, String(r.port)), h('td', {}, labels[r.status] || r.status), h('td', { class: 'num' }, r.status === 'ok' ? '–' : String(r.distance_m))))))));
+    if (done) results.append(h('div', { class: 'table-wrap' }, stackable(h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Port'), h('th', {}, 'Result'), h('th', { class: 'num' }, 'Fault distance (m)'))),
+      h('tbody', {}, ...done.results.map((r) => h('tr', { 'data-testid': `cable-${r.port}` }, h('td', {}, String(r.port)), h('td', {}, labels[r.status] || r.status), h('td', { class: 'num' }, r.status === 'ok' ? '–' : String(r.distance_m)))))))));
   });
   host.append(section('Cable test', h('p', { class: 'muted' }, 'Checks the cable on a port for faults and estimates where a fault is.'),
     h('div', { class: 'checks' }, ...allPorts.map((p, i) => h('label', {}, boxes[i], `Port ${p}`))), h('p', {}, run_), results));
@@ -401,7 +419,7 @@ async function portSettings(host, S) {
   });
   host.append(section('Port speed and flow control',
     h('p', { class: 'muted' }, 'Auto negotiates. Fixed speeds need the same setting on the device at the other end. Members of a link aggregation group must share one setting.'),
-    h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ...['Port', 'Link now', 'Speed setting', 'Flow control'].map((t) => h('th', {}, t)))), h('tbody', {}, rows))),
+    h('div', { class: 'table-wrap' }, stackable(h('table', { class: 'controls' }, h('thead', {}, h('tr', {}, ...['Port', 'Link now', 'Speed setting', 'Flow control'].map((t) => h('th', {}, t)))), h('tbody', {}, rows)))),
     h('p', {}, save)));
 }
 
@@ -441,11 +459,11 @@ async function lagTab(host, S) {
     S.ctx.setDirty(() => dirty);
     clear(errBox).append(...errors.map((e) => h('div', {}, e)));
     clear(box).append(h('table', { class: 'matrix' },
-      h('thead', {}, h('tr', {}, h('th', {}, 'LAG'), h('th', {}, 'Active'), ...allPorts.map((p) => h('th', {}, String(p))))),
-      h('tbody', {}, ...model.map((g) => h('tr', { 'data-testid': `lag-row-${g.id}` },
-        h('td', {}, `LAG ${g.id}`),
-        h('td', {}, h('input', { type: 'checkbox', checked: g.enabled, 'aria-label': `LAG ${g.id} active`, 'data-testid': `lag-on-${g.id}`, onchange: (e) => { g.enabled = e.target.checked; draw(); } })),
-        ...allPorts.map((p) => h('td', {}, h('button', { class: `cell ${g.members.has(p) ? 'M' : ''}`, disabled: !g.enabled, 'aria-pressed': String(g.members.has(p)), 'aria-label': `LAG ${g.id}, port ${p}`, 'data-testid': `lag-cell-${g.id}-${p}`,
+      h('thead', {}, h('tr', {}, h('th', {}, 'Port'), ...model.map((g) => h('th', { 'data-testid': `lag-row-${g.id}` },
+        h('div', {}, `LAG ${g.id}`),
+        h('label', { class: 'check mini' }, h('input', { type: 'checkbox', checked: g.enabled, 'aria-label': `LAG ${g.id} active`, 'data-testid': `lag-on-${g.id}`, onchange: (e) => { g.enabled = e.target.checked; draw(); } }), 'on'))))),
+      h('tbody', {}, ...allPorts.map((p) => h('tr', {}, portHead(S, p),
+        ...model.map((g) => h('td', {}, h('button', { class: `cell ${g.members.has(p) ? 'M' : ''}`, disabled: !g.enabled, 'aria-pressed': String(g.members.has(p)), 'aria-label': `LAG ${g.id}, port ${p}`, 'data-testid': `lag-cell-${g.id}-${p}`,
           onclick: () => { if (g.members.has(p)) g.members.delete(p); else g.members.add(p); draw(); } }, g.members.has(p) ? '✓' : '–'))))))));
   };
   save.addEventListener('click', () => apply(save, () => put(`${dev(S.mac)}/lag`, { lags: model.map((g) => ({ id: g.id, enabled: g.enabled, members: g.enabled ? [...g.members].sort((a, b) => a - b) : [] })) }), 'Link aggregation saved.'));
@@ -630,6 +648,7 @@ async function maintenance(host, S) {
           h('a', { class: 'btn small', href: `/api${dev(S.mac)}/backups/${name}`, download: name }, 'Download'),
           h('button', { class: 'btn small ghost', 'data-testid': 'backup-delete', onclick: (e) => run(e.target, async () => { await del(`${dev(S.mac)}/backups/${name}`); await loadBackups(); }) }, 'Delete')))));
     }
+    if (backupRows.parentNode) stackable(backupRows.parentNode);
   };
   const backupNow = h('button', { class: 'btn', 'data-testid': 'backup-now' }, 'Back up now');
   backupNow.addEventListener('click', () => run(backupNow, async () => { await post(`${dev(S.mac)}/backups`); toast('Backup stored.'); await loadBackups(); }));
@@ -655,7 +674,7 @@ async function maintenance(host, S) {
     section('This entry', field('Label', label), field('Notes', notes), field('Fixed address', address, 'Set this for a switch on another subnet; Switchyard then talks to it directly.'),
       h('div', { class: 'row' }, saveMeta, forget, remove)),
     section('Automatic backups', h('p', { class: 'muted' }, 'Stored on the server in the data folder. Backups contain the configuration, never passwords.'),
-      h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Created'), h('th', { class: 'num' }, 'Size'), h('th', {}, ''))), backupRows)), h('p', {}, backupNow)),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'backups' }, h('thead', {}, h('tr', {}, h('th', {}, 'Created'), h('th', { class: 'num' }, 'Size'), h('th', {}, ''))), backupRows)), h('p', {}, backupNow)),
     section('Diagnostics', h('p', { class: 'muted' }, 'Reads each known setting once and shows which ones this switch answers, with the raw bytes. Nothing is changed. Paste the result into a hardware report to help support more models.'),
       h('div', { class: 'row' }, scanBtn, copyBtn), scanOut),
     section('Port and VLAN names', h('p', { class: 'muted' }, 'Names are kept by Switchyard (not on the switch) and shown in the port panel, the tables and the editors.'),

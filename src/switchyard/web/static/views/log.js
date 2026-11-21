@@ -1,6 +1,7 @@
 import { get } from '../api.js';
 import { clear, h } from '../util.js';
 import { toast } from '../ui.js';
+import { stackable } from './tabs.js';
 
 export async function renderLog(main, ctx) {
   let last = 0;
@@ -31,6 +32,7 @@ export async function renderLog(main, ctx) {
       tr.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') toggle(); });
       body.append(tr);
     }
+    stackable(body.parentNode);
   };
   const fetchMore = async () => {
     if (paused) return;
