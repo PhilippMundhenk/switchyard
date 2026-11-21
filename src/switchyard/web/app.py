@@ -416,6 +416,10 @@ def create_app(config: Config) -> FastAPI:
         )
         if path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
+        elif "Cache-Control" not in response.headers:
+            # The UI modules have no version in their names: make the browser revalidate
+            # every time (a cheap 304) so an updated image never runs with old scripts.
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
     @app.exception_handler(NotFound)

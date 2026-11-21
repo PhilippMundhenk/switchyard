@@ -27,7 +27,7 @@ and the riskier functions below have only run against the simulator. Take it slo
 ## Help support more models
 
 *Maintenance*, *Diagnostics*, *Scan settings* reads every known setting once and shows which ones
-your switch answers, with the raw bytes. It changes nothing. Press *Copy for bug report* and paste
+your switch answers, with the raw bytes. *empty (not supported)* means the switch answered without a value, which is how some firmware says it does not have that setting. It changes nothing. Press *Copy for bug report* and paste
 the result into a *Hardware report* issue. Settings such as port LED, power saving, loop prevention
 and port names exist on some models; their value layouts are not verified, so Switchyard does not
 write them yet and needs these reports first.
@@ -64,4 +64,4 @@ Filled from reports.
 
 | Model | Hardware | Firmware | Discovery | Read | Write | Reporter notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| GS108E | v1 | 1.00.09 | yes | yes | yes | maintainer, 2026-11: discovery, status, statistics, VLANs, QoS, name and IP work. No loop detection, link aggregation or port speed settings on this model. Answers a read with an unknown setting by an empty reply (handled since 0.1). Firmware upgrade not tried. |
+| GS108E | v1 | 1.00.09 | yes | yes | yes | maintainer, 2026-11: discovery, status, statistics, VLANs, QoS, name and IP work. No loop detection, link aggregation or port speed settings on this model (the settings scan gets empty answers for all three). Answers a read with an unknown setting by an empty reply (handled since 0.1). Firmware upgrade not tried. |

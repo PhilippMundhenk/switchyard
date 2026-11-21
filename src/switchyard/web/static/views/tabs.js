@@ -754,8 +754,8 @@ async function maintenance(host, S) {
   scanBtn.addEventListener('click', () => run(scanBtn, async () => {
     clear(scanOut).append(h('p', { class: 'muted' }, 'Reading… silent firmware needs about a second per unknown setting.'));
     const res = await get(`${dev(S.mac)}/diagnostics`);
-    const rows = res.tags.map((t) => [`0x${t.tag.toString(16).padStart(4, '0')}`, t.name || '(unknown)', t.answered ? 'answers' : t.status === null ? 'silent' : `status ${t.status}`, t.values.join(' | ') || '–']);
-    scanText = `${res.info.model} fw ${res.info.firmware} (${res.info.password_mode})\n` + rows.filter((r) => r[2] === 'answers').map((r) => r.join('  ')).join('\n');
+    const rows = res.tags.map((t) => [`0x${t.tag.toString(16).padStart(4, '0')}`, t.name || '(unknown)', t.answered ? (t.values.some((v) => v) ? 'answers' : 'empty (not supported)') : t.status === null ? 'silent' : `status ${t.status}`, t.values.join(' | ') || '–']);
+    scanText = `${res.info.model} fw ${res.info.firmware} (${res.info.password_mode})\n` + rows.filter((r) => r[2] !== 'silent').map((r) => r.join('  ')).join('\n');
     clear(scanOut).append(h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ...['Tag', 'Setting', 'Result', 'Raw value(s)'].map((x) => h('th', {}, x)))),
       h('tbody', { 'data-testid': 'diag-body' }, ...rows.map((r) => h('tr', { 'data-testid': 'diag-row', 'data-answers': String(r[2] === 'answers') }, h('td', { class: 'mono' }, r[0]), h('td', {}, r[1]), h('td', {}, r[2]), h('td', { class: 'mono' }, r[3])))))));
     copyBtn.hidden = false;

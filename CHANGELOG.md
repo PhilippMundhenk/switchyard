@@ -14,6 +14,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
   new `switchyard reset-password` (#48).
 
 ### Fixed
+- After an update, browsers no longer keep running the old interface scripts from their cache. The settings scan labels answers without a value as 'empty (not supported)' (#10).
 - 'Copy for bug report' works on plain HTTP (no clipboard API there): copy fallback, else a dialog with the text and a download; the protocol log page is titled 'Protocol log' (#56).
 - Requests are no longer broadcast on Docker, Podman, libvirt and Kubernetes bridges, and go only out of the interface a switch answered on (#57).
 - Phone layout: statistics as one row per port; QoS and speed/flow control with port chips and one editor for the selected ports (#58).

@@ -421,7 +421,9 @@ def test_system_meta_health_static(client):
     assert "rate_codes" in client.get("/api/meta").json()
     assert client.get("/health").json()["status"] == "ok"
     assert client.get("/api/health").json()["demo"] is False
-    assert client.get("/style.css").status_code == 200
+    css = client.get("/style.css")
+    assert css.status_code == 200 and css.headers["cache-control"] == "no-cache"
+    assert client.get("/app.js").headers["cache-control"] == "no-cache"
     assert client.get("/api/docs").status_code == 404  # no Swagger UI: it would load from a CDN
     assert client.get("/api/openapi.json").json()["info"]["title"] == "Switchyard"
     assert (
