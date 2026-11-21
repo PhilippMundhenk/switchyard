@@ -6,6 +6,8 @@ import asyncio
 import ipaddress
 from collections.abc import Callable
 
+from ..drivers.base import AuthError as _AuthError
+from ..drivers.base import PasswordRequired, SwitchDriver, SwitchError, Unreachable
 from . import firmware as fw
 from . import tags as T
 from . import tftp
@@ -34,7 +36,27 @@ AUTH_STATUSES = {7, 9, 13, 14}
 DISCOVERY_TAGS = [T.MODEL, T.NAME, T.MAC, T.IP, T.NETMASK, T.GATEWAY, T.DHCP, T.FIRMWARE]
 
 
-class NsdpError(Exception):
+__all__ = ["AuthError", "NsdpError", "PasswordRequired", "SwitchClient", "Unreachable"]
+
+# settings whose layout is unverified; the diagnostics scan only reads them
+PROBE_UNVERIFIED = (
+    0x0002,
+    0x000C,
+    0x000F,
+    0x0014,
+    0x0017,
+    0x7400,
+    0x8000,
+    0xA000,
+    0xA800,
+    0xAC00,
+    0xB000,
+    0xF000,
+)
+SECRET_TAGS = {0x0009, 0x000A, 0x001A}  # credentials are never read back
+
+
+class NsdpError(SwitchError):
     def __init__(self, status: int, tag: int = 0, message: str | None = None):
         self.status = status
         self.tag = tag
@@ -44,16 +66,8 @@ class NsdpError(Exception):
         super().__init__(text)
 
 
-class AuthError(NsdpError):
+class AuthError(NsdpError, _AuthError):
     """The switch refused the password."""
-
-
-class PasswordRequired(Exception):
-    """A write was attempted without a stored password."""
-
-
-class Unreachable(Exception):
-    """The switch did not answer."""
 
 
 def _empty(tag_list: list[int]) -> list[tuple[int, bytes]]:
@@ -113,7 +127,14 @@ async def probe(transport: Transport, address: str, timeout: float = 1.5) -> dic
     return None
 
 
-class SwitchClient:
+class SwitchClient(SwitchDriver):
+    """A NETGEAR switch speaking NSDP."""
+
+    protocol = "nsdp"
+    vendor = "NETGEAR"
+    unicast = True
+    needs_username = False
+
     def __init__(
         self,
         transport: Transport,
@@ -218,7 +239,13 @@ class SwitchClient:
         async with self.lock:
             await self._write(tlvs)
 
-    async def login(self, password: str) -> None:
+    def diagnostic_tags(self) -> list[int]:
+        return [t for t in sorted({*T.NAMES, *PROBE_UNVERIFIED}) if t not in SECRET_TAGS]
+
+    def tag_allowed(self, tag: int) -> bool:
+        return 0 <= tag <= 0xFFFE and tag not in SECRET_TAGS
+
+    async def login(self, password: str, username: str | None = None) -> None:
         """Check a password by sending a write that changes nothing."""
         async with self.lock:
             await self._write([], password)

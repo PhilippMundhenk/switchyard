@@ -8,3 +8,4 @@
 | [0004](0004-host-networking.md) | Host networking and per-interface sockets |
 | [0005](0005-app-auth-and-stored-passwords.md) | Web password and stored switch passwords |
 | [0006](0006-firmware-upgrade-with-guardrails.md) | Firmware upgrade with guardrails |
+| [0007](0007-driver-interface.md) | One driver interface for several switch protocols |

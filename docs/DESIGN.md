@@ -29,7 +29,8 @@ have no web interface.
 flowchart LR
   B[Browser SPA] <-->|JSON, session cookie| A[FastAPI app]
   A --> M[Manager: registry, discovery, backup]
-  M --> C[SwitchClient per switch]
+  M --> BK[Backend per protocol]
+  BK --> C[Driver per switch, e.g. NSDP SwitchClient]
   C --> T[Transport: UDP sockets per interface]
   T <-->|NSDP 63321/63322| S[(Switches)]
   M --> D[(devices.json)]
@@ -38,6 +39,8 @@ flowchart LR
 
 | Module | Role |
 | --- | --- |
+| `drivers/base.py` | the driver and backend interface every protocol implements |
+| `drivers/nsdp.py` | NETGEAR NSDP as a backend |
 | `nsdp/packet.py` | header and TLV codec |
 | `nsdp/auth.py` | password encodings |
 | `nsdp/tags.py` | tag numbers and value layouts |
@@ -57,7 +60,7 @@ flowchart LR
 ## Decisions
 
 See [adr](adr/README.md). In short: Python and FastAPI, a no-build vanilla JS UI, NSDP rather than
-scraping, a simulator first, host networking, a password for the UI, firmware upgrade with guardrails.
+scraping, a simulator first, host networking, a password for the UI, firmware upgrade with guardrails, one driver interface for several protocols.
 
 ## Open questions
 

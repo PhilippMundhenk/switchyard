@@ -13,6 +13,9 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - The generated password is printed once on stderr regardless of the log level;
   new `switchyard reset-password` (#48).
 
+### Changed
+- Switch protocols sit behind one driver interface; NETGEAR NSDP is the first driver. Stored switches remember their protocol, the search asks every protocol, and a setting a switch does not have is answered with a clear 'not supported' (#62).
+
 ### Documentation
 - A bridged Docker network with a published port works for switches added by IP address; host networking is only needed for the search (#61).
 

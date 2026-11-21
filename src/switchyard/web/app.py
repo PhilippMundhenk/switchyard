@@ -19,11 +19,11 @@ from pydantic import BaseModel, Field
 
 from .. import __version__
 from ..config import Config
+from ..drivers.base import AuthError, PasswordRequired, SwitchError, Unreachable, Unsupported
 from ..manager import MAX_FIRMWARE_BYTES, Manager, NotFound
 from ..mqtt import MqttBridge, parse_url
 from ..nsdp import Transport
 from ..nsdp import tags as T
-from ..nsdp.client import AuthError, NsdpError, PasswordRequired, Unreachable
 from ..nsdp.netif import list_interfaces
 from ..nsdp.packet import format_mac
 from ..sim import Simulator, demo_switches
@@ -32,22 +32,6 @@ from .audit import Audit
 from .auth import COOKIE, Auth
 
 log = logging.getLogger(__name__)
-# settings whose layout is unverified; the diagnostics scan only reads them
-PROBE_UNVERIFIED = (
-    0x0002,
-    0x000C,
-    0x000F,
-    0x0014,
-    0x0017,
-    0x7400,
-    0x8000,
-    0xA000,
-    0xA800,
-    0xAC00,
-    0xB000,
-    0xF000,
-)
-SECRET_TAGS = {0x0009, 0x000A, 0x001A}  # credentials are never read back
 VIEWER_MAY_POST = {"/api/logout", "/api/discovery/scan"}
 MAC_PATH = re.compile(r"^(/api/devices/)([0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5})(/.*)?$")
 STATIC = Path(__file__).parent / "static"
@@ -73,6 +57,7 @@ class AddBody(BaseModel):
     label: str = Field("", max_length=60)
     password: str | None = None
     remember: bool = True
+    username: str | None = Field(None, max_length=32)
 
 
 class UpdateBody(BaseModel):
@@ -86,6 +71,7 @@ class UpdateBody(BaseModel):
 class SwitchLoginBody(BaseModel):
     password: str
     remember: bool = True
+    username: str | None = Field(None, max_length=32)
 
 
 class NetworkBody(BaseModel):
@@ -436,11 +422,21 @@ def create_app(config: Config) -> FastAPI:
 
     @app.exception_handler(AuthError)
     async def _switch_auth(request, exc):
-        return error(409, "switch_auth", str(exc), switch_status=exc.status)
+        return error(409, "switch_auth", str(exc), switch_status=getattr(exc, "status", None))
 
-    @app.exception_handler(NsdpError)
+    @app.exception_handler(Unsupported)
+    async def _unsupported(request, exc):
+        return error(409, "unsupported", str(exc))
+
+    @app.exception_handler(SwitchError)
     async def _switch_error(request, exc):
-        return error(502, "switch_error", str(exc), switch_status=exc.status, tag=exc.tag)
+        return error(
+            502,
+            "switch_error",
+            str(exc),
+            switch_status=getattr(exc, "status", None),
+            tag=getattr(exc, "tag", 0),
+        )
 
     @app.exception_handler(ValueError)
     async def _invalid(request, exc):
@@ -560,14 +556,15 @@ def create_app(config: Config) -> FastAPI:
     @api.get("/devices/{mac}/diagnostics")
     async def diagnostics(mac: str, extra: str = ""):
         """Read-only scan: which known (and a few unverified) settings does the switch answer?"""
-        wanted = sorted({*T.NAMES, *PROBE_UNVERIFIED})
+        client = manager().client(mac)
+        wanted = client.diagnostic_tags()
         for item in [x for x in extra.split(",") if x.strip()][:16]:
             tag = int(item, 0)
             if not 0 <= tag <= 0xFFFE:
                 raise ValueError("A tag number is 0 to 0xfffe.")
-            wanted.append(tag)
-        wanted = [t for t in dict.fromkeys(wanted) if t not in SECRET_TAGS]
-        client = manager().client(mac)
+            if client.tag_allowed(tag):
+                wanted.append(tag)
+        wanted = list(dict.fromkeys(wanted))
         return {"tags": await client.scan_tags(wanted), "info": await client.read_info()}
 
     @api.get("/devices/{mac}/history.csv")
@@ -620,7 +617,9 @@ def create_app(config: Config) -> FastAPI:
 
     @api.post("/devices", status_code=201)
     async def add_device(body: AddBody):
-        return await manager().add(body.mac, body.address, body.label, body.password, body.remember)
+        return await manager().add(
+            body.mac, body.address, body.label, body.password, body.remember, body.username
+        )
 
     @api.get("/devices/{mac}")
     def get_device(mac: str):
@@ -645,7 +644,7 @@ def create_app(config: Config) -> FastAPI:
 
     @api.post("/devices/{mac}/login")
     async def switch_login(mac: str, body: SwitchLoginBody):
-        return await manager().login(mac, body.password, body.remember)
+        return await manager().login(mac, body.password, body.remember, body.username)
 
     # -- reading -------------------------------------------------------------
 
