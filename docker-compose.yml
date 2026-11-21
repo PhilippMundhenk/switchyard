@@ -8,6 +8,9 @@ services:
     image: ghcr.io/philippmundhenk/switchyard:latest
     network_mode: host
     restart: unless-stopped
+    # The container runs as user 10001: before the first start, give it the folder with
+    #   mkdir -p data && sudo chown 10001:10001 data
+    # or run as your own user instead: user: "1000:1000" (see docs/DEPLOYMENT.md, "Data folder").
     volumes:
       - ./data:/data
     environment:

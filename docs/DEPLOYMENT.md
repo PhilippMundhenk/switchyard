@@ -16,6 +16,10 @@ docker compose logs switchyard | grep -i password   # generated password, first 
 
 With host networking `ports:` is ignored; change the web port with `SWITCHYARD_SERVER_PORT`.
 
+Either way, the container runs as user 10001, so a bind-mounted `./data` folder has to belong to
+that user before the first start: `mkdir -p data && sudo chown 10001:10001 data` (other options
+under [Data folder](#data-folder)).
+
 **Bridged network with a published port.** If you would rather not use host networking, publish
 the web port and add every switch with *Add by IP address* (or list the switch addresses in
 `SWITCHYARD_NSDP_TARGETS`). The search finds nothing this way.
