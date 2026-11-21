@@ -30,11 +30,16 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "${{ matrix.python }}", cache: pip }
       - run: pip install -e ".[dev]"
-      - name: MQTT broker for the Home Assistant tests
-        run: sudo apt-get install -y --no-install-recommends mosquitto
+      - name: MQTT broker (mosquitto) for the Home Assistant tests
+        run: |
+          sudo apt-get install -y --no-install-recommends mosquitto
+          printf 'listener 18830 127.0.0.1\nallow_anonymous true\n' | sudo tee /etc/mosquitto/conf.d/switchyard-test.conf
+          sudo systemctl restart mosquitto
+          for i in $(seq 1 20); do nc -z 127.0.0.1 18830 && break; sleep 0.5; done
       - name: Lint
         run: ruff check . && ruff format --check . && python tools/check_js.py
       - name: Tests with the 95 % coverage gate
+        env: { SWITCHYARD_TEST_MQTT_PORT: "18830" }
         run: pytest -m "not e2e" --cov --cov-report=term-missing --cov-report=xml
       - uses: actions/upload-artifact@v4
         if: always()

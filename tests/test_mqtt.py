@@ -34,7 +34,16 @@ def _free_port() -> int:
 
 @pytest.fixture(scope="module")
 def broker(tmp_path_factory):
-    """A real MQTT broker on loopback: mosquitto if available, else amqtt."""
+    """A real MQTT broker on loopback.
+
+    SWITCHYARD_TEST_MQTT_PORT: use an already running broker (CI configures mosquitto as a
+    service; AppArmor stops mosquitto from reading a config file under /tmp). Otherwise start
+    mosquitto if installed, else amqtt.
+    """
+    running = os.environ.get("SWITCHYARD_TEST_MQTT_PORT")
+    if running:
+        yield int(running)
+        return
     port = _free_port()
     folder = tmp_path_factory.mktemp("broker")
     mosquitto = os.environ.get("SWITCHYARD_MOSQUITTO") or shutil.which("mosquitto")
