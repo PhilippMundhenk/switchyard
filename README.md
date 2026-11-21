@@ -12,9 +12,10 @@ VLANs, QoS, mirroring and more.
 
 ![Switches](docs/screenshots/switches.png)
 
-**Status:** version 0.1, developed against a simulator built from public protocol documentation.
-It is **not yet verified on real hardware**. Read [docs/HARDWARE.md](docs/HARDWARE.md) before you
-point it at a switch you care about, and please report what you find.
+**Status:** version 0.1. Confirmed on a real GS108E by the maintainer: discovery, reading and
+changing settings work. Firmware upgrade, link aggregation and port speed settings have only been
+tested against the built-in simulator so far. Read [docs/HARDWARE.md](docs/HARDWARE.md) before you
+use those, and please report what you find.
 
 ## Which switches
 
@@ -23,7 +24,8 @@ interface at all, so this is the only way to configure them.
 
 | Switch | Status |
 | --- | --- |
-| GS108E v1, v2, v3, GS105E (first generation) | expected to work, being verified |
+| GS108E | works (maintainer's switch: discovery, reading, configuration) |
+| GS105E (first generation), other GS108E revisions | expected to work, reports welcome |
 | GS105E v2, GS110EMX, JGS516PE, JGS524PE, XS-series | may work, reports welcome |
 | Newer firmware with the Plus Utility turned off | needs a setting change, see [troubleshooting](docs/TROUBLESHOOTING.md) |
 
@@ -77,7 +79,7 @@ Want to look around first? `docker run --rm -p 8080:8080 -e SWITCHYARD_DEMO_ENAB
 | Access | Admin password, optional read-only viewer password, audit log of every change |
 | Debugging | Live protocol log with passwords blanked |
 
-Not included: LACP (these switches only do static aggregation), LED and power saving options. Link aggregation, port speed and firmware upgrade are new and, like everything else, **not yet verified on real hardware**; the firmware upgrade is the riskiest function, read [docs/HARDWARE.md](docs/HARDWARE.md) first.
+Not included: LACP (these switches only do static aggregation), LED and power saving options. Link aggregation, port speed and firmware upgrade are new and **not yet verified on real hardware**; the firmware upgrade is the riskiest function, read [docs/HARDWARE.md](docs/HARDWARE.md) first.
 
 ## Screenshots
 

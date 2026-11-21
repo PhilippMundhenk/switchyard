@@ -1,6 +1,7 @@
 # First run on a real switch
 
-Switchyard has so far only run against a simulator. Take it slowly and keep a way back.
+Switchyard works on the maintainer's GS108E (discovery, reading and changing settings). Other models
+and the riskier functions below have only run against the simulator. Take it slowly and keep a way back.
 
 ## Before you start
 
@@ -63,4 +64,4 @@ Filled from reports.
 
 | Model | Hardware | Firmware | Discovery | Read | Write | Reporter notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| | | | | | | |
+| GS108E | (please report) | (please report) | yes | yes | yes | maintainer, 2026-11: discovery, all reads and configuration work; firmware upgrade, LAG and speed settings not tried |
