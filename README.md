@@ -34,8 +34,10 @@ interface at all, so this is the only way to configure them.
 1. Run it on a machine in the **same network segment** as the switches.
    The container runs as user 10001: for a bind-mounted `./data` folder first run
    `mkdir -p data && sudo chown 10001:10001 data` (or set `user:` to your own ID, see
-   [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#data-folder)). Discovery uses UDP
-   broadcast, so the container needs host networking.
+   [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#data-folder)). *Search network* uses UDP
+   broadcast, so the container uses host networking. Without the search, a bridged network with
+   a published port and switches added by IP address works too, see
+   [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#docker).
 
    ```yaml
    services:

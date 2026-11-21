@@ -21,7 +21,10 @@ in Home Assistant besides its standard MQTT integration.
 
    Use `mqtts://broker:8883` for TLS (the broker certificate is verified).
 3. Restart Switchyard. *Settings* shows "Home Assistant (MQTT): connected". The switches appear
-   under *Settings*, *Devices & services*, *MQTT*.
+   under *Settings*, *Devices & services*, *MQTT*. While it says "connecting", the reason is shown
+   behind it and logged once as a warning, for example "cannot find host name" for a typo in the
+   address, "connection refused" when no broker listens on that port, or "the broker refused
+   the connection: Not authorized" for a wrong user name or password.
 
 The values come from the background monitor (`monitor.interval_seconds`, default 30 s). With the
 monitor off, Home Assistant gets the switches but no live values.

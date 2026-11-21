@@ -2,8 +2,12 @@
 
 ## Docker
 
-Use host networking. NSDP discovery is a UDP broadcast on the switches' network; a bridged
-container never sees the answers. See the compose file in the repository root.
+Host networking is only needed for *Search network*. The search is a UDP broadcast on the
+switches' network, and a container on a Docker bridge network neither sends into that network nor
+receives the answers. Everything else talks to one switch at a time, by unicast to its address.
+
+**Host networking (recommended).** Everything works, including the search. This is the compose
+file in the repository root:
 
 ```sh
 docker compose up -d
@@ -11,6 +15,28 @@ docker compose logs switchyard | grep -i password   # generated password, first 
 ```
 
 With host networking `ports:` is ignored; change the web port with `SWITCHYARD_SERVER_PORT`.
+
+**Bridged network with a published port.** If you would rather not use host networking, publish
+the web port and add every switch with *Add by IP address* (or list the switch addresses in
+`SWITCHYARD_NSDP_TARGETS`). The search finds nothing this way.
+
+```yaml
+services:
+  switchyard:
+    image: ghcr.io/philippmundhenk/switchyard:latest
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+```
+
+Docker translates the container's requests to the host's address and passes the switch's answers
+back, as long as the switch answers to the sender. Firmware that answers every request by
+broadcast (see [Several networks](#several-networks)) cannot be managed from a bridged container.
+Not verified this way: firmware upgrades. The switch's TFTP server answers from a new port, which
+Docker's address translation usually drops; use host networking for an upgrade. Reports from
+real switches on a bridged network are welcome.
 
 ## Data folder
 

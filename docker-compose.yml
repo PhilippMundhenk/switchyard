@@ -1,4 +1,8 @@
-# Switchyard needs UDP broadcast on the switches' network, so it uses host networking.
+# Host networking lets Switchyard search the network for switches (a UDP broadcast).
+# Without the search, a bridged network works too: remove network_mode, publish the web port
+#   ports:
+#     - "8080:8080"
+# and add every switch by its IP address. See docs/DEPLOYMENT.md, "Docker".
 services:
   switchyard:
     image: ghcr.io/philippmundhenk/switchyard:latest
@@ -12,7 +16,7 @@ services:
       # SWITCHYARD_SERVER_PORT: "8080"
       # Search only these network interfaces (comma separated):
       # SWITCHYARD_NSDP_INTERFACES: "eth0"
-      # Switches on other subnets (directed broadcast or unicast addresses):
+      # Switches on other subnets or with a bridged network (directed broadcast or unicast addresses):
       # SWITCHYARD_NSDP_TARGETS: "192.168.5.255"
       # Run four simulated switches instead of using the network:
       # SWITCHYARD_DEMO_ENABLED: "true"

@@ -11,7 +11,9 @@ import contextlib
 import hashlib
 import json
 import logging
+import socket
 import ssl
+import sys
 import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -39,6 +41,22 @@ def parse_url(url: str) -> dict:
         "username": unquote(parts.username) if parts.username else None,
         "password": unquote(parts.password) if parts.password else None,
     }
+
+
+def describe_failure(exc: BaseException | None, host: str, port: int) -> str:
+    """A short, readable reason why the broker could not be reached."""
+    if isinstance(exc, socket.gaierror):
+        return f"cannot find host name '{host}' (check the address in mqtt.url)"
+    if isinstance(exc, ConnectionRefusedError):
+        return f"connection refused by {host}:{port} (no broker on that port?)"
+    if isinstance(exc, (TimeoutError, socket.timeout)):
+        return f"no answer from {host}:{port} (address or firewall?)"
+    if isinstance(exc, ssl.SSLError):
+        detail = getattr(exc, "verify_message", None) or getattr(exc, "reason", None) or exc
+        return f"TLS failed: {detail}"
+    if isinstance(exc, OSError) and exc.strerror:
+        return f"cannot connect to {host}:{port}: {exc.strerror}"
+    return f"cannot connect to {host}:{port}" + (f": {exc}" if exc else "")
 
 
 def mac_id(mac: str) -> str:
@@ -94,6 +112,7 @@ class MqttBridge:
             client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
         client.will_set(f"{self.prefix}/status", "offline", qos=1, retain=True)
         client.on_connect = self._on_connect
+        client.on_connect_fail = self._on_connect_fail
         client.on_disconnect = self._on_disconnect
         client.on_message = self._on_message
         client.reconnect_delay_set(1, 60)
@@ -125,10 +144,22 @@ class MqttBridge:
 
     # -- paho callbacks (network thread) -------------------------------------
 
+    def _report(self, error: str) -> None:
+        """Show the reason on the Settings page; log it once, not on every retry."""
+        if error != self.status.get("error"):
+            log.warning("MQTT: %s", error)
+        self.status["error"] = error
+
+    def _on_connect_fail(self, client, userdata) -> None:
+        # paho calls this from inside its except block, so the exception is still at hand
+        exc = sys.exc_info()[1]
+        self.status["state"] = "connecting"
+        self._report(describe_failure(exc, self.target["host"], self.target["port"]))
+
     def _on_connect(self, client, userdata, flags, reason, properties=None) -> None:
         if reason.is_failure:
-            self.status.update(state="error", error=str(reason))
-            log.warning("MQTT connection refused: %s", reason)
+            self.status["state"] = "error"
+            self._report(f"the broker refused the connection: {reason}")
             return
         self.status.update(state="connected", error=None)
         log.info("MQTT connected to %s", self.status["broker"])
@@ -139,8 +170,10 @@ class MqttBridge:
         self.loop.call_soon_threadsafe(self.publish_all)
 
     def _on_disconnect(self, client, userdata, flags, reason, properties=None) -> None:
+        if self.status["state"] == "connected":
+            self._report(f"connection to the broker lost: {reason}")
         if self.status["state"] != "off":
-            self.status.update(state="connecting", error=str(reason) if reason else None)
+            self.status["state"] = "connecting"
 
     def _on_message(self, client, userdata, message) -> None:
         asyncio.run_coroutine_threadsafe(

@@ -13,7 +13,11 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - The generated password is printed once on stderr regardless of the log level;
   new `switchyard reset-password` (#48).
 
+### Documentation
+- A bridged Docker network with a published port works for switches added by IP address; host networking is only needed for the search (#61).
+
 ### Fixed
+- MQTT: when the broker cannot be reached, *Settings* and the log say why (unknown host name, connection refused, no answer, TLS, login refused) instead of only 'connecting' (#60).
 - After an update, browsers no longer keep running the old interface scripts from their cache. The settings scan labels answers without a value as 'empty (not supported)' (#10).
 - 'Copy for bug report' works on plain HTTP (no clipboard API there): copy fallback, else a dialog with the text and a download; the protocol log page is titled 'Protocol log' (#56).
 - Requests are no longer broadcast on Docker, Podman, libvirt and Kubernetes bridges, and go only out of the interface a switch answered on (#57).

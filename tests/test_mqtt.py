@@ -311,12 +311,51 @@ async def test_commands_are_refused_or_ignored_safely(tmp_path, sim, broker):
         )
 
 
-def test_broker_refusal_and_bad_url_are_reported(tmp_path, sim):
-    env = make_env(sim.port, sim.tftp_port, SWITCHYARD_MQTT_URL="mqtt://127.0.0.1:9")
-    with TestClient(create_app(cfg.load(tmp_path, env=env))) as c:
-        c.post("/api/login", json={"password": PASSWORD})
+def _mqtt_status(c, predicate, timeout=10.0):
+    end = time.time() + timeout
+    while True:
         status = c.get("/api/system").json()["mqtt"]
-        assert status["state"] in ("connecting", "error") and status["broker"] == "127.0.0.1:9"
+        if predicate(status) or time.time() > end:
+            return status
+        time.sleep(0.1)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        (f"mqtt://127.0.0.1:{_free_port()}", "connection refused by 127.0.0.1:"),
+        ("mqtt://no-such-broker.invalid", "cannot find host name 'no-such-broker.invalid'"),
+    ],
+)
+def test_broker_unreachable_is_explained(tmp_path, sim, caplog, url, expected):
+    env = make_env(sim.port, sim.tftp_port, SWITCHYARD_MQTT_URL=url)
+    with (
+        caplog.at_level("WARNING", logger="switchyard.mqtt"),
+        TestClient(create_app(cfg.load(tmp_path, env=env))) as c,
+    ):
+        c.post("/api/login", json={"password": PASSWORD})
+        status = _mqtt_status(c, lambda s: s["error"])
+        assert status["state"] == "connecting" and expected in status["error"]
+        time.sleep(2.5)  # paho retries after 1 s, then 2 s: the warning is not repeated
+    warnings = [r.getMessage() for r in caplog.records if r.name == "switchyard.mqtt"]
+    assert len([w for w in warnings if expected in w]) == 1, warnings
+
+
+def test_describe_failure():
+    import ssl
+
+    from switchyard.mqtt import describe_failure
+
+    assert "no answer from b:1" in describe_failure(TimeoutError(), "b", 1)
+    assert describe_failure(ssl.SSLError(1, "x"), "b", 1).startswith("TLS failed")
+    assert "Network is unreachable" in describe_failure(
+        OSError(101, "Network is unreachable"), "b", 1
+    )
+    assert describe_failure(None, "b", 1) == "cannot connect to b:1"
+    assert describe_failure(OSError("odd"), "b", 1) == "cannot connect to b:1: odd"
+
+
+def test_bad_url_is_reported(tmp_path, sim):
     with pytest.raises(ValueError):
         create_app(cfg.load(tmp_path / "x", env=make_env(sim.port, SWITCHYARD_MQTT_URL="http://x")))
 
