@@ -13,7 +13,7 @@ function card(d) {
     h(
       'dl',
       { class: 'kv' },
-      h('dt', {}, 'Model'), h('dd', {}, info.model || '?'),
+      h('dt', {}, 'Model'), h('dd', { 'data-testid': 'card-model' }, [d.vendor, info.model || '?'].filter(Boolean).join(' ')),
       h('dt', {}, 'IP'), h('dd', {}, info.ip || '?'),
       h('dt', {}, 'MAC'), h('dd', { class: 'mono' }, d.mac),
       h('dt', {}, 'Firmware'), h('dd', {}, info.firmware || '?'),
@@ -23,6 +23,8 @@ function card(d) {
     h('div', { class: 'row' }, h('span', { class: 'tag' }, d.has_password ? 'password stored' : 'no password'), d.address ? h('span', { class: 'tag' }, `unicast ${d.address}`) : null),
   );
 }
+
+const VENDORS = { nsdp: 'NETGEAR', easysmart: 'TP-Link' };
 
 function addByIp(done) {
   const ip = h('input', { type: 'text', id: 'add-ip', placeholder: '192.168.0.239', inputmode: 'decimal', 'data-testid': 'add-ip' });
@@ -104,7 +106,7 @@ export async function renderSwitches(main, ctx) {
     if (!fresh.length) body.append(h('p', { class: 'muted', 'data-testid': 'found-none' }, found.length ? 'Every switch that answered is already in your list.' : 'No switch answered.'));
     else {
       const rows = fresh.map((f) => h('tr', { 'data-testid': 'found-row', 'data-mac': f.mac },
-        h('td', {}, f.name || '–'), h('td', {}, f.model || '?'), h('td', {}, f.ip || '?'), h('td', { class: 'mono' }, f.mac), h('td', {}, f.firmware || '?'),
+        h('td', {}, f.name || '–'), h('td', {}, [VENDORS[f.protocol], f.model || '?'].filter(Boolean).join(' ')), h('td', {}, f.ip || '?'), h('td', { class: 'mono' }, f.mac), h('td', {}, f.firmware || '?'),
         h('td', {}, h('button', { class: 'btn small primary', 'data-testid': 'add-found', onclick: async (e) => {
           await run(e.target, async () => { await post('/devices', { mac: f.mac }); toast(`Added ${f.model || 'switch'}.`); await refresh(); });
         } }, 'Add'))));

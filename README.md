@@ -2,13 +2,14 @@
 
 # Switchyard
 
-A web interface for managing NETGEAR ProSAFE Plus ("Smart Managed Plus", "Easy Smart") switches
-such as the GS108E. It replaces the Windows-only *ProSAFE Plus Utility* with something you can
+A web interface for managing NETGEAR ProSAFE Plus ("Smart Managed Plus") switches such as the
+GS108E, and TP-Link Easy Smart switches such as the TL-SG108E and TL-SG108PE. It replaces the
+Windows-only *ProSAFE Plus Utility* and *Easy Smart Configuration Utility* with something you can
 run in a container and open from any browser: find your switches, add them to a list, and change
 VLANs, QoS, mirroring and more.
 
 > Switchyard is an independent open-source project. It is not affiliated with, endorsed or
-> supported by NETGEAR. Product names are used only to say what it works with.
+> supported by NETGEAR or TP-Link. Product names are used only to say what it works with.
 
 ![Switches](docs/screenshots/switches.png)
 
@@ -19,8 +20,9 @@ use those, and please report what you find.
 
 ## Which switches
 
-Switches that the old utility managed, over its UDP protocol (NSDP). Several models have no web
-interface at all, so this is the only way to configure them.
+Switches that the vendors' Windows utilities manage, over their UDP protocols (NETGEAR NSDP,
+TP-Link Easy Smart). Several models have no web interface at all, so this is the only way to
+configure them.
 
 | Switch | Status |
 | --- | --- |
@@ -28,6 +30,7 @@ interface at all, so this is the only way to configure them.
 | GS105E (first generation), other GS108E revisions | expected to work, reports welcome |
 | GS105E v2, GS110EMX, JGS516PE, JGS524PE, XS-series | may work, reports welcome |
 | Newer firmware with the Plus Utility turned off | needs a setting change, see [troubleshooting](docs/TROUBLESHOOTING.md) |
+| TP-Link TL-SG105E, TL-SG108E, TL-SG108PE, TL-SG1016DE, TL-SG1024DE | new, tested against the simulator only; a TL-SG108PE test is under way, see [HARDWARE.md](docs/HARDWARE.md#tp-link-easy-smart). Same network segment only. PoE settings not yet |
 
 ## Getting started
 
@@ -62,7 +65,7 @@ interface at all, so this is the only way to configure them.
    talks to that address directly, also through a router.
 4. Reads need no password. When you change something, Switchyard asks for the switch password.
 
-Want to look around first? `docker run --rm -p 8080:8080 -e SWITCHYARD_DEMO_ENABLED=true -e SWITCHYARD_AUTH_PASSWORD=demo ghcr.io/philippmundhenk/switchyard` starts four simulated switches.
+Want to look around first? `docker run --rm -p 8080:8080 -e SWITCHYARD_DEMO_ENABLED=true -e SWITCHYARD_AUTH_PASSWORD=demo ghcr.io/philippmundhenk/switchyard` starts simulated switches (four NETGEAR, two TP-Link).
 
 ## What it does
 
@@ -123,7 +126,8 @@ All keys: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) every setting; [docs/API.md](docs/API.md) every HTTP route
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) nothing found, password refused, locked out
 - [docs/security.md](docs/security.md) what is protected and what is not
-- [docs/PROTOCOL.md](docs/PROTOCOL.md) the NSDP protocol as Switchyard speaks it
+- [docs/PROTOCOL.md](docs/PROTOCOL.md) the NSDP protocol as Switchyard speaks it;
+  [docs/PROTOCOL-EASYSMART.md](docs/PROTOCOL-EASYSMART.md) the TP-Link Easy Smart protocol
 - [docs/DESIGN.md](docs/DESIGN.md) goals, architecture, decisions; [docs/adr](docs/adr/README.md)
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) build, test, contribute; [CONTRIBUTING.md](CONTRIBUTING.md)
 

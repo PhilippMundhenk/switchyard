@@ -30,6 +30,10 @@
   (this class of weakness is CVE-2020-35221). Anyone who can see the traffic on the segment can
   recover or replay them, and several firmware versions had no authentication at all. Keep switch
   management on a trusted VLAN.
+- **TP-Link Easy Smart switches.** Every packet is RC4-encrypted with one key that is the same
+  on every switch and public, so user name and password travel as good as in plain text on older
+  firmware. Firmware from 2023 on adds a session key exchanged with 64-bit RSA, which is no real
+  protection either. Answers go to the broadcast address, so every host on the segment sees them.
 - **Anyone with the web password** can reconfigure every switch whose password is stored.
 - **`auth.disabled`** removes the login. Use it only behind something that authenticates.
 

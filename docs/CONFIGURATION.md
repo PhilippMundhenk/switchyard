@@ -24,6 +24,10 @@ The data folder is `/data` in the container, `./data` otherwise, or `--data DIR`
 | `nsdp.tftp_port` | `SWITCHYARD_NSDP_TFTP_PORT` | `69` | UDP port of the switch's TFTP server, used for firmware upgrades. |
 | `nsdp.discovery_seconds` | `SWITCHYARD_NSDP_DISCOVERY_SECONDS` | `2.0` | How long a search waits for answers. |
 | `nsdp.poll_seconds` | `SWITCHYARD_NSDP_POLL_SECONDS` | `60` | Search in the background this often to keep the online state fresh. 0 = never. |
+| `easysmart.enabled` | `SWITCHYARD_EASYSMART_ENABLED` | `true` | Also search for and manage TP-Link Easy Smart switches (TL-SG105E, TL-SG108E, TL-SG108PE, TL-SG1016DE, ...). They answer by broadcast: same network segment only. |
+| `easysmart.client_port` | `SWITCHYARD_EASYSMART_CLIENT_PORT` | `29809` | UDP port this side uses (the switches answer to 29809). |
+| `easysmart.device_port` | `SWITCHYARD_EASYSMART_DEVICE_PORT` | `29808` | UDP port the switches listen on. |
+| `easysmart.targets` | `SWITCHYARD_EASYSMART_TARGETS` | `[]` | Send to these addresses instead of broadcasting, e.g. ["127.0.0.1:29808"] (tests). |
 | `backup.interval_hours` | `SWITCHYARD_BACKUP_INTERVAL_HOURS` | `24` | Store a configuration backup of every managed switch this often (only when it changed). 0 = off. |
 | `backup.keep` | `SWITCHYARD_BACKUP_KEEP` | `14` | How many stored backups to keep per switch. |
 | `monitor.interval_seconds` | `SWITCHYARD_MONITOR_INTERVAL_SECONDS` | `30` | Read the ports of every managed switch this often to keep history, link events and metrics. 0 = off. |
@@ -37,7 +41,7 @@ The data folder is `/data` in the container, `./data` otherwise, or `--data DIR`
 | `mqtt.discovery_prefix` | `SWITCHYARD_MQTT_DISCOVERY_PREFIX` | `"homeassistant"` | Home Assistant's MQTT discovery prefix. |
 | `mqtt.allow_control` | `SWITCHYARD_MQTT_ALLOW_CONTROL` | `false` | true = Home Assistant gets a restart button per switch and an on/off switch per port. Anyone who can publish to the broker can then use them. Needs stored switch passwords. |
 | `mqtt.base_url` | `SWITCHYARD_MQTT_BASE_URL` | `""` | Address of this web interface, linked from the Home Assistant device page. |
-| `demo.enabled` | `SWITCHYARD_DEMO_ENABLED` | `false` | true = start four simulated switches instead of using the network. |
+| `demo.enabled` | `SWITCHYARD_DEMO_ENABLED` | `false` | true = start simulated switches (four NETGEAR, two TP-Link) instead of the network. |
 | `log.level` | `SWITCHYARD_LOG_LEVEL` | `"info"` | debug, info, warning or error. |
 
 ## Data folder

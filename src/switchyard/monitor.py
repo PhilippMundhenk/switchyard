@@ -105,11 +105,13 @@ class Monitor:
                 "t": now,
                 "ports": {
                     p["port"]: (
-                        p.get("rx_bytes", 0),
+                        p.get("rx_bytes", 0),  # None: the switch counts packets only
                         p.get("tx_bytes", 0),
-                        p.get("crc_errors", 0),
+                        p.get("errors", 0) if p.get("crc_errors") is None else p["crc_errors"],
                         p.get("up", False),
                         p.get("speed_mbps", 0),
+                        p.get("rx_packets"),
+                        p.get("tx_packets"),
                     )
                     for p in ports
                 },
@@ -182,18 +184,25 @@ class Monitor:
         out = {}
         for port, row in after["ports"].items():
             old = before["ports"].get(port)
-            if dt > 0 and old and row[0] >= old[0] and row[1] >= old[1]:
+            if row[0] is None or old is None or old[0] is None:
+                continue  # packet counters only: no bit rate
+            if dt > 0 and row[0] >= old[0] and row[1] >= old[1]:
                 out[port] = ((row[0] - old[0]) * 8 / dt, (row[1] - old[1]) * 8 / dt)
         return out
 
     def counter(self, mac: str, port: int, name: str) -> int | None:
         buf = self.samples.get(mac)
         row = buf[-1]["ports"].get(port) if buf else None
-        return None if row is None else row[{"rx": 0, "tx": 1, "crc": 2}[name]]
+        index = {"rx": 0, "tx": 1, "crc": 2, "rx_packets": 5, "tx_packets": 6}[name]
+        return None if row is None or len(row) <= index else row[index]
 
     def history(self, mac: str, minutes: float = 60) -> dict:
-        """Rates in bit/s between consecutive samples, per port and summed (port 0)."""
+        """Rates between consecutive samples, per port and summed (port 0).
+
+        bit/s; packets/s for switches that only count packets (TP-Link Easy Smart).
+        """
         buf = list(self.samples.get(mac, ()))
+        packets = bool(buf) and any(r[0] is None for r in buf[-1]["ports"].values())
         cutoff = time.time() - minutes * 60
         series: dict[int, list[list[float]]] = {}
         for before, after in itertools.pairwise(buf):
@@ -205,13 +214,17 @@ class Monitor:
             total_rx = total_tx = 0.0
             for port, row in after["ports"].items():
                 old = before["ports"].get(port)
-                if old is None or row[0] < old[0] or row[1] < old[1]:
+                (a, b, factor) = (5, 6, 1) if packets else (0, 1, 8)
+                if old is None or len(row) <= b or len(old) <= b:
+                    continue
+                if None in (row[a], row[b], old[a], old[b]) or row[a] < old[a] or row[b] < old[b]:
                     continue  # counters were cleared or the switch restarted
-                rx, tx = (row[0] - old[0]) * 8 / dt, (row[1] - old[1]) * 8 / dt
+                rx, tx = (row[a] - old[a]) * factor / dt, (row[b] - old[b]) * factor / dt
                 series.setdefault(port, []).append([round(after["t"], 1), rx, tx])
                 total_rx, total_tx = total_rx + rx, total_tx + tx
             series.setdefault(0, []).append([round(after["t"], 1), total_rx, total_tx])
-        return {"interval": self.interval, "series": series}
+        unit = "packets/s" if packets else "bit/s"
+        return {"interval": self.interval, "series": series, "unit": unit}
 
     def metrics(self) -> str:
         lines = [
@@ -228,15 +241,20 @@ class Monitor:
             lines.append(f"switchyard_switch_up{{{base}}} {up}")
             buf = self.samples.get(mac)
             if buf:
-                for port, (rx, tx, crc, link, speed) in sorted(buf[-1]["ports"].items()):
+                for port, row in sorted(buf[-1]["ports"].items()):
+                    rx, tx, crc, link, speed = row[:5]
+                    rx_packets, tx_packets = (*row, None, None)[5:7]
                     labels = f'mac="{mac}",port="{port}"'
-                    rows += [
+                    candidates = [
                         ("switchyard_port_up", "gauge", labels, int(link)),
                         ("switchyard_port_speed_mbps", "gauge", labels, speed),
                         ("switchyard_port_received_bytes_total", "counter", labels, rx),
                         ("switchyard_port_sent_bytes_total", "counter", labels, tx),
                         ("switchyard_port_crc_errors_total", "counter", labels, crc),
+                        ("switchyard_port_received_packets_total", "counter", labels, rx_packets),
+                        ("switchyard_port_sent_packets_total", "counter", labels, tx_packets),
                     ]
+                    rows += [r for r in candidates if r[3] is not None]
         seen = set()
         for name, kind, labels, value in sorted(rows, key=lambda r: r[0]):
             if name not in seen:

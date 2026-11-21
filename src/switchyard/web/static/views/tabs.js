@@ -172,6 +172,14 @@ async function network(host, S) {
 }
 
 // ------------------------------------------------------------------- ports
+// TP-Link Easy Smart switches count packets (good and bad), not bytes
+const packetsOnly = (p) => p.rx_bytes == null && p.rx_packets != null;
+const fmtPackets = (n) => (n == null ? '–' : n >= 1e6 ? `${(n / 1e6).toFixed(1)} M pkts` : n >= 1e3 ? `${(n / 1e3).toFixed(1)} k pkts` : `${n} pkts`);
+const fmtPps = (r) => (r == null ? '–' : `${r >= 100 ? Math.round(r) : r.toFixed(1)} pkt/s`);
+const totalRx = (p) => (packetsOnly(p) ? fmtPackets(p.rx_packets) : fmtBytes(p.rx_bytes));
+const totalTx = (p) => (packetsOnly(p) ? fmtPackets(p.tx_packets) : fmtBytes(p.tx_bytes));
+const errorCount = (p) => (packetsOnly(p) ? p.errors : p.crc_errors);
+
 async function ports(host, S) {
   const body = h('tbody', { 'data-testid': 'stats-body' });
   let previous = null;
@@ -184,11 +192,11 @@ async function ports(host, S) {
       body.append(h('tr', { 'data-testid': `stat-${p.port}` },
         h('td', {}, String(p.port), portName(S, p.port) ? h('small', { class: 'muted' }, ` ${portName(S, p.port)}`) : null), h('td', {}, h('span', { class: `dot ${p.up ? 'online' : ''}` }), ' ', p.link || '–'),
         h('td', {}, p.duplex || '–'),
-        h('td', { class: 'num', title: `${p.rx_bytes} bytes` }, fmtBytes(p.rx_bytes)),
-        h('td', { class: 'num' }, fmtRate(rate(p.rx_bytes, before && before.rx_bytes))),
-        h('td', { class: 'num', title: `${p.tx_bytes} bytes` }, fmtBytes(p.tx_bytes)),
-        h('td', { class: 'num' }, fmtRate(rate(p.tx_bytes, before && before.tx_bytes))),
-        h('td', { class: 'num' }, String(p.crc_errors ?? 0))));
+        h('td', { class: 'num', title: packetsOnly(p) ? `${p.rx_packets} packets` : `${p.rx_bytes} bytes` }, totalRx(p)),
+        h('td', { class: 'num' }, packetsOnly(p) ? fmtPps(rate(p.rx_packets, before && before.rx_packets)) : fmtRate(rate(p.rx_bytes, before && before.rx_bytes))),
+        h('td', { class: 'num', title: packetsOnly(p) ? `${p.tx_packets} packets` : `${p.tx_bytes} bytes` }, totalTx(p)),
+        h('td', { class: 'num' }, packetsOnly(p) ? fmtPps(rate(p.tx_packets, before && before.tx_packets)) : fmtRate(rate(p.tx_bytes, before && before.tx_bytes))),
+        h('td', { class: 'num' }, String(errorCount(p) ?? 0))));
     }
     previous = { t, rows: new Map(rows.map((p) => [p.port, p])) };
   };
@@ -199,15 +207,17 @@ async function ports(host, S) {
       const before = previous && previous.rows.get(p.port);
       const dt = previous ? (t - previous.t) / 1000 : 0;
       const rate = (a, b) => (before && dt > 0 && a >= b ? (a - b) / dt : null);
-      const rx = rate(p.rx_bytes, before && before.rx_bytes);
-      const tx = rate(p.tx_bytes, before && before.tx_bytes);
+      const pk = packetsOnly(p);
+      const rx = pk ? rate(p.rx_packets, before && before.rx_packets) : rate(p.rx_bytes, before && before.rx_bytes);
+      const tx = pk ? rate(p.tx_packets, before && before.tx_packets) : rate(p.tx_bytes, before && before.tx_bytes);
+      const fr = pk ? fmtPps : fmtRate;
       list.append(h('div', { class: `prow ${p.up ? '' : 'down'}`, 'data-testid': `stat-${p.port}` },
         h('span', { class: `badge ${speedClass(p)}` }, String(p.port)),
         h('div', { class: 'pmain' },
           h('div', {}, h('b', {}, p.up ? p.link : 'down'), portName(S, p.port) ? h('span', { class: 'muted' }, ` · ${portName(S, p.port)}`) : null,
-            p.crc_errors ? h('span', { class: 'error' }, ` · ${p.crc_errors} CRC errors`) : null),
-          h('div', { class: 'muted small' }, p.up && rx !== null ? `now ↓ ${fmtRate(rx)}  ↑ ${fmtRate(tx)}` : '')),
-        h('div', { class: 'ptotals' }, h('div', { title: `${p.rx_bytes} bytes received` }, `↓ ${fmtBytes(p.rx_bytes)}`), h('div', { title: `${p.tx_bytes} bytes sent` }, `↑ ${fmtBytes(p.tx_bytes)}`))));
+            errorCount(p) ? h('span', { class: 'error' }, ` · ${errorCount(p)} ${pk ? 'bad packets' : 'CRC errors'}`) : null),
+          h('div', { class: 'muted small' }, p.up && rx !== null ? `now ↓ ${fr(rx)}  ↑ ${fr(tx)}` : '')),
+        h('div', { class: 'ptotals' }, h('div', { title: 'received' }, `↓ ${totalRx(p)}`), h('div', { title: 'sent' }, `↑ ${totalTx(p)}`))));
     }
   };
   const phone = isPhone();
@@ -217,7 +227,7 @@ async function ports(host, S) {
   clearBtn.addEventListener('click', () => applier(S)(clearBtn, () => post(`${dev(S.mac)}/stats/reset`), 'Counters cleared.'));
   host.append(section('Port status and statistics',
     phone ? list : h('div', { class: 'table-wrap' }, h('table', {},
-      h('thead', {}, h('tr', {}, ...['Port', 'Link', 'Duplex', 'Received', 'Rx rate', 'Sent', 'Tx rate', 'CRC errors'].map((t, i) => h('th', { class: i > 2 ? 'num' : '' }, t)))), body)),
+      h('thead', {}, h('tr', {}, ...['Port', 'Link', 'Duplex', 'Received', 'Rx rate', 'Sent', 'Tx rate', S.state.ports.some(packetsOnly) ? 'Bad packets' : 'CRC errors'].map((t, i) => h('th', { class: i > 2 ? 'num' : '' }, t)))), body)),
     h('p', {}, clearBtn)));
   poll(S, async () => render((await get(`${dev(S.mac)}/ports`)).ports, Date.now()), 3000);
 
@@ -234,7 +244,7 @@ async function ports(host, S) {
       return;
     }
     const width = Math.max(320, Math.min(900, chartBox.clientWidth || 760));
-    chartBox.append(drawChart(points, { width, height: width < 500 ? 200 : 220 }), h('div', { class: 'chart-legend' }, h('span', {}, h('i', { class: 'rx' }), 'Received'), h('span', {}, h('i', { class: 'tx' }), 'Sent')));
+    chartBox.append(drawChart(points, { width, height: width < 500 ? 200 : 220, format: hist.unit === 'packets/s' ? fmtPps : null }), h('div', { class: 'chart-legend' }, h('span', {}, h('i', { class: 'rx' }), 'Received'), h('span', {}, h('i', { class: 'tx' }), 'Sent')));
   };
   which.addEventListener('change', () => drawHistory().catch(showError));
   range.addEventListener('change', () => drawHistory().catch(showError));
@@ -437,14 +447,21 @@ async function features(host, S) {
     const vid = h('input', { type: 'number', min: '1', max: '4093', value: g.vlan || 1, 'data-testid': 'igmp-vlan' });
     const block = h('input', { type: 'checkbox', checked: Boolean(g.block_unknown), disabled: g.block_unknown === null, 'data-testid': 'igmp-block' });
     const validate = h('input', { type: 'checkbox', checked: Boolean(g.validate_v3), disabled: g.validate_v3 === null, 'data-testid': 'igmp-validate' });
+    const suppress = h('input', { type: 'checkbox', checked: Boolean(g.report_suppression), 'data-testid': 'igmp-suppress' });
+    const hasVlan = g.vlan !== null && g.vlan !== undefined; // TP-Link: no VLAN setting
+    const hasSuppress = g.report_suppression !== undefined;
     const save = h('button', { class: 'btn primary', 'data-testid': 'igmp-save' }, 'Apply');
     save.addEventListener('click', () => {
       const id = Number(vid.value);
-      if (on.checked && (!Number.isInteger(id) || id < 1 || id > 4093)) return toast('VLAN ID must be 1 to 4093.', 'error');
-      return apply(save, () => put(`${dev(S.mac)}/igmp`, { enabled: on.checked, vlan: id || 1, block_unknown: g.block_unknown === null ? null : block.checked, validate_v3: g.validate_v3 === null ? null : validate.checked }), 'IGMP snooping saved.');
+      if (hasVlan && on.checked && (!Number.isInteger(id) || id < 1 || id > 4093)) return toast('VLAN ID must be 1 to 4093.', 'error');
+      const payload = { enabled: on.checked, vlan: hasVlan ? id || 1 : 1, block_unknown: g.block_unknown === null ? null : block.checked, validate_v3: g.validate_v3 === null ? null : validate.checked };
+      if (hasSuppress) payload.report_suppression = suppress.checked;
+      return apply(save, () => put(`${dev(S.mac)}/igmp`, payload), 'IGMP snooping saved.');
     });
-    host.append(section('IGMP snooping', h('label', { class: 'check' }, on, ' Enable IGMP snooping'), field('VLAN ID', vid),
-      h('label', { class: 'check' }, block, ' Block unknown multicast addresses'), h('label', { class: 'check' }, validate, ' Validate IGMPv3 IP header'), h('p', {}, save)));
+    host.append(section('IGMP snooping', h('label', { class: 'check' }, on, ' Enable IGMP snooping'), hasVlan ? field('VLAN ID', vid) : null,
+      g.block_unknown === null ? null : h('label', { class: 'check' }, block, ' Block unknown multicast addresses'),
+      g.validate_v3 === null ? null : h('label', { class: 'check' }, validate, ' Validate IGMPv3 IP header'),
+      hasSuppress ? h('label', { class: 'check' }, suppress, ' Report message suppression') : null, h('p', {}, save)));
   }
 
   const loop = S.state.loop_detection;

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import ipaddress
+import itertools
 import logging
 import socket
 import time
@@ -28,6 +29,7 @@ log = logging.getLogger(__name__)
 CLIENT_PORT = 63321
 DEVICE_PORT = 63322
 BROADCAST = "255.255.255.255"
+LOG_IDS = itertools.count(1)  # shared by every protocol's packet log
 
 
 @dataclass
@@ -102,7 +104,6 @@ class Transport:
         self._waiters: dict[int, Callable[[Packet, tuple], None]] = {}
         self.packet_log: deque[dict] = deque(maxlen=log_size)
         self.home: dict[bytes, str] = {}  # switch MAC -> interface it answered on
-        self._log_id = 0
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -174,10 +175,9 @@ class Transport:
     # -- packet log ----------------------------------------------------------
 
     def _record(self, direction: str, packet: Packet | None, raw: bytes, peer: str) -> None:
-        self._log_id += 1
         self.packet_log.append(
             {
-                "id": self._log_id,
+                "id": next(LOG_IDS),
                 "time": time.time(),
                 "direction": direction,
                 "peer": peer,

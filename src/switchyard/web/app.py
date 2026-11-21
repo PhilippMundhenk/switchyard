@@ -20,6 +20,10 @@ from pydantic import BaseModel, Field
 from .. import __version__
 from ..config import Config
 from ..drivers.base import AuthError, PasswordRequired, SwitchError, Unreachable, Unsupported
+from ..drivers.easysmart import EasySmartBackend
+from ..easysmart.packet import RSA_MODULUS
+from ..easysmart.sim import SIM_MODULUS, EasySmartSimulator, demo_easysmart
+from ..easysmart.transport import EasySmartTransport
 from ..manager import MAX_FIRMWARE_BYTES, Manager, NotFound
 from ..mqtt import MqttBridge, parse_url
 from ..nsdp import Transport
@@ -125,6 +129,7 @@ class IgmpBody(BaseModel):
     vlan: int = Field(1, ge=1, le=4093)
     block_unknown: bool | None = None
     validate_v3: bool | None = None
+    report_suppression: bool | None = None
 
 
 class LagGroup(BaseModel):
@@ -262,6 +267,7 @@ def create_app(config: Config) -> FastAPI:
     if config["mqtt.url"]:
         parse_url(config["mqtt.url"])  # fail at start, not later in the background
     simulator = Simulator(demo_switches()) if config["demo.enabled"] else None
+    tp_simulator = EasySmartSimulator(demo_easysmart()) if config["demo.enabled"] else None
     auth = Auth(
         config.data_dir,
         config["auth.password"],
@@ -277,7 +283,7 @@ def create_app(config: Config) -> FastAPI:
         if simulator:
             port = await simulator.start()
             targets, client_port = [f"127.0.0.1:{port}"], 0
-            log.warning("demo mode: four simulated switches, the network is not used")
+            log.warning("demo mode: simulated NETGEAR and TP-Link switches, no network used")
         transport = Transport(
             client_port,
             config["nsdp.device_port"],
@@ -287,7 +293,22 @@ def create_app(config: Config) -> FastAPI:
         )
         if simulator:
             transport.tftp_port = simulator.tftp_port
-        manager = Manager(config, transport, Store(config.data_dir / "devices.json"))
+        backends = []
+        if config["easysmart.enabled"] or tp_simulator:
+            tp_targets = list(config["easysmart.targets"])
+            tp_port = config["easysmart.client_port"]
+            modulus = RSA_MODULUS
+            if tp_simulator:
+                tp_targets = [f"127.0.0.1:{await tp_simulator.start()}"]
+                tp_port, modulus = 0, SIM_MODULUS
+            tp_transport = EasySmartTransport(
+                tp_port,
+                config["easysmart.device_port"],
+                tp_targets,
+                config["nsdp.interfaces"],
+            )
+            backends.append(EasySmartBackend(tp_transport, modulus))
+        manager = Manager(config, transport, Store(config.data_dir / "devices.json"), backends)
         if simulator:
             manager.upgrade_settle, manager.upgrade_poll = 0.3, 0.5
         await manager.start()
@@ -304,6 +325,8 @@ def create_app(config: Config) -> FastAPI:
             await manager.stop()
             if simulator:
                 simulator.stop()
+            if tp_simulator:
+                tp_simulator.stop()
 
     app = FastAPI(
         title="Switchyard",
@@ -536,11 +559,11 @@ def create_app(config: Config) -> FastAPI:
 
     @api.get("/log")
     def packet_log(after: int = 0, device: str | None = None):
-        rows = [
-            r
-            for r in manager().transport.packet_log
-            if r["id"] > after and (device is None or r["device"] == device)
-        ]
+        entries = [r for b in manager().backends.values() for r in b.packet_log()]
+        rows = sorted(
+            (r for r in entries if r["id"] > after and (device is None or r["device"] == device)),
+            key=lambda r: r["id"],
+        )
         return {"entries": rows}
 
     @api.get("/events")
@@ -720,7 +743,7 @@ def create_app(config: Config) -> FastAPI:
 
     @api.put("/devices/{mac}/igmp")
     async def set_igmp(mac: str, body: IgmpBody):
-        await manager().client(mac).set_igmp(**body.model_dump())
+        await manager().client(mac).set_igmp(**body.model_dump(exclude_none=True))
         return ok("IGMP snooping saved.")
 
     @api.put("/devices/{mac}/loop-detection")

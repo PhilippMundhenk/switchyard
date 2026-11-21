@@ -74,6 +74,21 @@ SCHEMA: list[tuple[str, str, object, str]] = [
         "Search in the background this often to keep the online state fresh.\n# 0 = never.",
     ),
     (
+        "easysmart",
+        "enabled",
+        True,
+        "Also search for and manage TP-Link Easy Smart switches (TL-SG105E, TL-SG108E,\n"
+        "# TL-SG108PE, TL-SG1016DE, ...). They answer by broadcast: same network segment only.",
+    ),
+    ("easysmart", "client_port", 29809, "UDP port this side uses (the switches answer to 29809)."),
+    ("easysmart", "device_port", 29808, "UDP port the switches listen on."),
+    (
+        "easysmart",
+        "targets",
+        [],
+        'Send to these addresses instead of broadcasting, e.g. ["127.0.0.1:29808"] (tests).',
+    ),
+    (
         "backup",
         "interval_hours",
         24,
@@ -129,7 +144,7 @@ SCHEMA: list[tuple[str, str, object, str]] = [
         "demo",
         "enabled",
         False,
-        "true = start four simulated switches instead of using the network.",
+        "true = start simulated switches (four NETGEAR, two TP-Link) instead of the network.",
     ),
     ("log", "level", "info", "debug, info, warning or error."),
 ]

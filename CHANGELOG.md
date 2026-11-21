@@ -36,6 +36,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
   source address the routing table picks (#49).
 
 ### Added
+- TP-Link Easy Smart switches (TL-SG105E, TL-SG108E, TL-SG108PE, TL-SG1016DE, ...): search, status, packet statistics, 802.1Q and port-based VLANs, QoS with rate limits and storm control, mirroring, IGMP snooping, loop prevention, LED, link aggregation, port speed and flow control, name and IP, password, reboot, factory reset, backup and restore. Both protocol generations (token, and the session key of firmware from 2023). A simulator with two demo switches. Tested against the simulator only so far; test plan in HARDWARE.md (#63 #64 #65 #67 #68).
 - Home Assistant integration over MQTT discovery: online, firmware, ports up; per port link, speed, traffic, CRC errors; opt-in restart button and port on/off (#51).
 - First version: discovery, multi-switch list, port status and statistics, name and IP settings,
   port-based and 802.1Q VLANs, QoS and rate limits, port mirroring, IGMP snooping, loop detection,

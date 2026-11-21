@@ -88,9 +88,13 @@ export function confirmDialog({ title, message, confirmLabel = 'Confirm', danger
 }
 
 // Asks for the password of one switch, logs in, resolves true when it worked.
-export function switchLoginDialog(mac, name, reason) {
+export async function switchLoginDialog(mac, name, reason) {
+  // TP-Link switches also want a user name; NETGEAR ones only a password
+  const device = await api('GET', dev(mac)).catch(() => ({}));
+  const tplink = Boolean(device.needs_username);
   return new Promise((resolve) => {
     let answered = false;
+    const user = h('input', { type: 'text', id: 'sw-user', autocomplete: 'off', value: device.username || 'admin', 'data-testid': 'switch-username' });
     const pw = h('input', { type: 'password', id: 'sw-pass', autocomplete: 'off', 'data-testid': 'switch-password' });
     const remember = h('input', { type: 'checkbox', id: 'sw-remember', checked: true, 'data-testid': 'switch-remember' });
     const message = h('p', { class: 'error', 'data-testid': 'switch-login-error', hidden: true });
@@ -98,9 +102,13 @@ export function switchLoginDialog(mac, name, reason) {
       'form',
       { onsubmit: (e) => e.preventDefault() },
       h('p', {}, reason || `Changing settings on ${name} needs its password.`),
+      tplink ? h('label', { for: 'sw-user' }, 'User name') : null,
+      tplink ? user : null,
       h('label', { for: 'sw-pass' }, 'Switch password'),
       pw,
-      h('p', { class: 'muted' }, 'A factory-fresh switch uses ', h('code', {}, 'password'), '.'),
+      tplink
+        ? h('p', { class: 'muted' }, 'A factory-fresh TP-Link switch uses ', h('code', {}, 'admin'), ' / ', h('code', {}, 'admin'), '.')
+        : h('p', { class: 'muted' }, 'A factory-fresh switch uses ', h('code', {}, 'password'), '.'),
       h('label', { class: 'check' }, remember, ' Remember it on this server'),
       message,
     );
@@ -120,7 +128,9 @@ export function switchLoginDialog(mac, name, reason) {
             onclick: async () => {
               ok.disabled = true;
               try {
-                await api('POST', `${dev(mac)}/login`, { password: pw.value, remember: remember.checked });
+                const login = { password: pw.value, remember: remember.checked };
+                if (tplink) login.username = user.value.trim() || 'admin';
+                await api('POST', `${dev(mac)}/login`, login);
                 answered = true;
                 close();
                 resolve(true);

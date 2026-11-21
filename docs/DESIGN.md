@@ -41,6 +41,8 @@ flowchart LR
 | --- | --- |
 | `drivers/base.py` | the driver and backend interface every protocol implements |
 | `drivers/nsdp.py` | NETGEAR NSDP as a backend |
+| `drivers/easysmart.py` | TP-Link Easy Smart as a backend |
+| `easysmart/` | Easy Smart packets and RC4, transport, client (token and session-key firmware), simulator; see [PROTOCOL-EASYSMART.md](PROTOCOL-EASYSMART.md) |
 | `nsdp/packet.py` | header and TLV codec |
 | `nsdp/auth.py` | password encodings |
 | `nsdp/tags.py` | tag numbers and value layouts |

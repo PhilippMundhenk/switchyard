@@ -409,7 +409,16 @@ class Manager:
             await step(
                 "IGMP snooping",
                 client.set_igmp(
-                    igmp["enabled"], igmp["vlan"] or 1, igmp["block_unknown"], igmp["validate_v3"]
+                    igmp["enabled"],
+                    igmp["vlan"] or 1,
+                    igmp["block_unknown"],
+                    igmp["validate_v3"],
+                    # TP-Link only
+                    **(
+                        {"report_suppression": igmp["report_suppression"]}
+                        if "report_suppression" in igmp
+                        else {}
+                    ),
                 ),
             )
         if config.get("loop_detection") is not None:

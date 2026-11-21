@@ -17,7 +17,8 @@ export function niceMax(value) {
 }
 
 // points: [[t, rx_bps, tx_bps], ...]
-export function drawChart(points, { width = 760, height = 220 } = {}) {
+export function drawChart(points, { width = 760, height = 220, format = null } = {}) {
+  const opts = { format };
   const pad = { l: 88, r: 12, t: 10, b: 24 };
   const svg = el('svg', { viewBox: `0 0 ${width} ${height}`, class: 'chart', role: 'img', 'aria-label': 'Traffic over time', 'data-testid': 'chart' });
   const w = width - pad.l - pad.r;
@@ -30,7 +31,7 @@ export function drawChart(points, { width = 760, height = 220 } = {}) {
   for (let i = 0; i <= 4; i += 1) {
     const v = (max / 4) * i;
     svg.append(el('line', { x1: pad.l, x2: width - pad.r, y1: y(v), y2: y(v), class: 'grid' }));
-    svg.append(el('text', { x: pad.l - 6, y: y(v) + 4, 'text-anchor': 'end', class: 'axis' }, fmtRate(v / 8)));
+    svg.append(el('text', { x: pad.l - 6, y: y(v) + 4, 'text-anchor': 'end', class: 'axis' }, opts.format ? opts.format(v) : fmtRate(v / 8)));
   }
   const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   if (points.length) {

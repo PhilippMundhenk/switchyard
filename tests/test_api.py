@@ -441,7 +441,7 @@ def test_demo_mode_starts_its_own_switches(tmp_path):
     with TestClient(create_app(cfg.load(tmp_path, env=env))) as c:
         assert c.get("/api/session").json()["demo"] is True
         c.post("/api/login", json={"password": PASSWORD})
-        assert len(c.post("/api/discovery/scan").json()["found"]) == 4
+        assert len(c.post("/api/discovery/scan").json()["found"]) == 6  # 4 NETGEAR, 2 TP-Link
 
 
 def test_background_poller_marks_switches_online(tmp_path, sim):
