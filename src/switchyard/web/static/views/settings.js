@@ -6,7 +6,9 @@ export async function renderSettings(main, ctx, session) {
   const sys = await get('/system');
   const rows = [['Version', sys.version], ['Network interfaces used', sys.routes.join(', ') || 'none'],
     ['UDP port here / on switches', `${sys.client_port} / ${sys.device_port}`], ['Fixed targets', sys.targets.join(', ') || 'none (broadcast)'],
-    ['Configuration file', sys.config_file], ['Managed switches', sys.devices]];
+    ['Configuration file', sys.config_file], ['Managed switches', sys.devices],
+    ['Home Assistant (MQTT)', sys.mqtt.state === 'off' ? 'off' : `${sys.mqtt.state} to ${sys.mqtt.broker}${sys.mqtt.error ? ` (${sys.mqtt.error})` : ''}`],
+    ['Monitor', sys.monitor_seconds ? `every ${sys.monitor_seconds} s` : 'off']];
   main.append(h('div', { class: 'page-head' }, h('h1', {}, 'Settings')),
     section('System', h('dl', { class: 'kv', 'data-testid': 'system' }, ...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))])),
       h('h3', {}, 'Network interfaces found'),

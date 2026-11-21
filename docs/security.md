@@ -21,6 +21,7 @@
   credentials.
 - **Outbound connections.** Switchyard talks to the switches and, only if you set `notify.webhook_url`, POSTs event messages (switch name, MAC, port text) to that URL. Nothing else leaves the machine.
 - **No third-party requests.** The web interface loads nothing from other hosts (no fonts, scripts or API docs page from a CDN); the OpenAPI description is served as JSON only.
+- **MQTT.** Off by default. With `mqtt.url` set, state is published to that broker; the MQTT password is never shown by the API. Commands (restart, port on/off) are accepted only with `mqtt.allow_control`, only for switches in the list, and are written to the audit log; anyone allowed to publish to the broker can send them, so use broker users and ACLs. `mqtts://` verifies the broker certificate.
 - **Metrics.** `/metrics` needs a web session or the bearer token from `metrics.token`; it reveals MAC addresses, names and port counters.
 
 ## What it cannot protect

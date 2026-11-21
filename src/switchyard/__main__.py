@@ -81,6 +81,16 @@ async def _sim(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .config import DataDirError
+
+    try:
+        return _main(argv)
+    except DataDirError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+
+def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="switchyard", description="Web manager for NSDP switches")
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("--data", help="data folder (default: $SWITCHYARD_DATA_DIR or ./data)")

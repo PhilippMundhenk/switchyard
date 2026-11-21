@@ -14,10 +14,13 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
   new `switchyard reset-password` (#48).
 
 ### Fixed
+- An unwritable data folder (bind mount owned by another user) stops with a clear message
+  instead of a traceback; the requirements are documented (#52).
 - Add by IP through a router on hosts with several interfaces: unicast now leaves with the
   source address the routing table picks (#49).
 
 ### Added
+- Home Assistant integration over MQTT discovery: online, firmware, ports up; per port link, speed, traffic, CRC errors; opt-in restart button and port on/off (#51).
 - First version: discovery, multi-switch list, port status and statistics, name and IP settings,
   port-based and 802.1Q VLANs, QoS and rate limits, port mirroring, IGMP snooping, loop detection,
   cable test, switch password change, reboot, factory reset, JSON backup and restore.

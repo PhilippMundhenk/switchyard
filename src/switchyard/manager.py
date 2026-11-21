@@ -50,6 +50,7 @@ class Manager:
         self.backups = BackupStore(config.data_dir / "backups", config["backup.keep"])
         self._backup_task: asyncio.Task | None = None
         self.upgrades: dict[str, dict] = {}
+        self.listeners: list = []  # called with (mac, removed) when the list of switches changes
         self._upgrade_tasks: set[asyncio.Task] = set()
         self.upgrade_settle = 2.0  # pause between 'upgrade mode' and the upload
         self.upgrade_wait = 300.0  # how long to wait for the switch to come back
@@ -113,6 +114,7 @@ class Manager:
         info = {**device.get("info", {}), **{k: v for k, v in identity.items() if k != "source_ip"}}
         if info != device.get("info"):
             self.store.update(mac, info=info, last_seen=self.seen[mac])
+            self._changed(mac)
 
     def discovery(self) -> list[dict]:
         return [
@@ -194,6 +196,7 @@ class Manager:
                 await self.login(mac, password, remember)
             except (AuthError, Unreachable) as exc:
                 log.info("added %s but the password was not accepted: %s", mac, exc)
+        self._changed(mac)
         return self.view(self.device(mac))
 
     def update(self, mac: str, **fields) -> dict:
@@ -207,7 +210,15 @@ class Manager:
             changes["password"] = None
             self.clients.pop(mac, None)
         self.store.update(device["mac"], **changes)
+        self._changed(mac)
         return self.view(self.device(mac))
+
+    def _changed(self, mac: str, removed: bool = False) -> None:
+        for listener in list(self.listeners):
+            try:
+                listener(mac, removed)
+            except Exception:
+                log.exception("registry listener failed")
 
     def set_labels(self, mac: str, ports: dict[int, str], vlans: dict[int, str]) -> dict:
         """Local names for ports and VLANs (kept in devices.json, not on the switch)."""
@@ -216,12 +227,15 @@ class Manager:
             "port_labels": {str(p): t.strip()[:30] for p, t in ports.items() if t.strip()},
             "vlan_names": {str(v): t.strip()[:30] for v, t in vlans.items() if t.strip()},
         }
-        return self.view(self.store.update(mac, **clean))
+        view = self.view(self.store.update(mac, **clean))
+        self._changed(mac)
+        return view
 
     def remove(self, mac: str) -> None:
         self.device(mac)
         self.clients.pop(mac, None)
         self.store.remove(mac)
+        self._changed(mac, removed=True)
 
     async def login(self, mac: str, password: str, remember: bool) -> dict:
         client = self.client(mac)

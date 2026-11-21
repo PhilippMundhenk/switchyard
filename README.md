@@ -29,7 +29,10 @@ interface at all, so this is the only way to configure them.
 
 ## Getting started
 
-1. Run it on a machine in the **same network segment** as the switches. Discovery uses UDP
+1. Run it on a machine in the **same network segment** as the switches.
+   The container runs as user 10001: for a bind-mounted `./data` folder first run
+   `mkdir -p data && sudo chown 10001:10001 data` (or set `user:` to your own ID, see
+   [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#data-folder)). Discovery uses UDP
    broadcast, so the container needs host networking.
 
    ```yaml
@@ -70,6 +73,7 @@ Want to look around first? `docker run --rm -p 8080:8080 -e SWITCHYARD_DEMO_ENAB
 | Other | Port mirroring, IGMP snooping, loop detection, cable test |
 | Maintenance | Switch password, reboot, factory reset, JSON backup and restore, automatic stored backups, compare a backup with the live switch, port and VLAN names, **firmware upgrade** (checked image, typed confirmation, progress) |
 | Monitoring | Background port polling: dashboard summary, traffic history chart with CSV download, link and online/offline events, live port dots on every card, Prometheus `/metrics`, optional webhook |
+| Home Assistant | Every switch as a device over MQTT discovery: online, firmware, link, speed, traffic and CRC errors per port; optional restart button and port on/off |
 | Access | Admin password, optional read-only viewer password, audit log of every change |
 | Debugging | Live protocol log with passwords blanked |
 
@@ -101,6 +105,7 @@ Most settings have a sensible default. The common ones:
 | `SWITCHYARD_SERVER_FORWARDED_ALLOW_IPS` | Reverse proxies whose forwarded headers are trusted |
 | `SWITCHYARD_BACKUP_INTERVAL_HOURS` | Automatic backups (only when the configuration changed), default 24, 0 = off |
 | `SWITCHYARD_METRICS_TOKEN` | Bearer token for `/metrics` |
+| `SWITCHYARD_MQTT_URL` | MQTT broker for Home Assistant, see [docs/HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md) |
 | `SWITCHYARD_NOTIFY_WEBHOOK_URL` | POST link and online/offline events here |
 | `SWITCHYARD_DEMO_ENABLED` | Use simulated switches |
 
@@ -109,6 +114,7 @@ All keys: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 ## Documentation
 
 - [docs/HARDWARE.md](docs/HARDWARE.md) first run on a real switch, recovery, compatibility list
+- [docs/HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md) entities, setup, optional control
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) Docker, systemd, reverse proxy, routed networks
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) every setting; [docs/API.md](docs/API.md) every HTTP route
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) nothing found, password refused, locked out

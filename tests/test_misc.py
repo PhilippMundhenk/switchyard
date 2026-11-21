@@ -137,3 +137,24 @@ def test_cli_reset_password_refuses_a_configured_password(tmp_path, capsys, monk
     monkeypatch.setenv("SWITCHYARD_AUTH_PASSWORD", "configured-1")
     assert cli.main(["--data", str(tmp_path), "reset-password"]) == 1
     assert "change it there" in capsys.readouterr().err
+
+
+def test_unwritable_data_folder_gives_a_clear_message(tmp_path, capsys):
+    import os
+
+    if os.getuid() == 0:
+        pytest.skip("root can write everywhere")
+    locked = tmp_path / "data"
+    locked.mkdir()
+    locked.chmod(0o555)
+    try:
+        assert cli.main(["--data", str(locked), "discover"]) == 2
+        err = capsys.readouterr().err
+        assert "cannot write its data folder" in err and f"{os.getuid()}:{os.getgid()}" in err
+        assert "chown" in err and 'user: "1000:1000"' in err and "Traceback" not in err
+        # a folder that cannot even be created
+        assert cli.main(["--data", str(locked / "sub"), "serve"]) == 2
+        assert "not accessible" in capsys.readouterr().err
+    finally:
+        locked.chmod(0o755)
+    assert not (locked / ".switchyard-write-test").exists()

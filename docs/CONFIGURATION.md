@@ -30,6 +30,13 @@ The data folder is `/data` in the container, `./data` otherwise, or `--data DIR`
 | `monitor.history_minutes` | `SWITCHYARD_MONITOR_HISTORY_MINUTES` | `60` | How much traffic history to keep in memory. |
 | `metrics.token` | `SWITCHYARD_METRICS_TOKEN` | `""` | Bearer token for GET /metrics (Prometheus). Empty: /metrics needs a web session. |
 | `notify.webhook_url` | `SWITCHYARD_NOTIFY_WEBHOOK_URL` | `""` | POST a JSON message to this URL for link and online/offline events. Empty: off. |
+| `mqtt.url` | `SWITCHYARD_MQTT_URL` | `""` | MQTT broker for Home Assistant, e.g. mqtt://broker:1883 or mqtts://broker:8883. Empty: off. Needs the monitor (monitor.interval_seconds > 0) for live values. |
+| `mqtt.username` | `SWITCHYARD_MQTT_USERNAME` | `""` | MQTT user name (or put it into the URL). |
+| `mqtt.password` | `SWITCHYARD_MQTT_PASSWORD` | `""` | MQTT password (or put it into the URL). |
+| `mqtt.topic_prefix` | `SWITCHYARD_MQTT_TOPIC_PREFIX` | `"switchyard"` | Topics are <prefix>/<mac>/state and so on. |
+| `mqtt.discovery_prefix` | `SWITCHYARD_MQTT_DISCOVERY_PREFIX` | `"homeassistant"` | Home Assistant's MQTT discovery prefix. |
+| `mqtt.allow_control` | `SWITCHYARD_MQTT_ALLOW_CONTROL` | `false` | true = Home Assistant gets a restart button per switch and an on/off switch per port. Anyone who can publish to the broker can then use them. Needs stored switch passwords. |
+| `mqtt.base_url` | `SWITCHYARD_MQTT_BASE_URL` | `""` | Address of this web interface, linked from the Home Assistant device page. |
 | `demo.enabled` | `SWITCHYARD_DEMO_ENABLED` | `false` | true = start four simulated switches instead of using the network. |
 | `log.level` | `SWITCHYARD_LOG_LEVEL` | `"info"` | debug, info, warning or error. |
 

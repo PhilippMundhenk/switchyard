@@ -101,6 +101,30 @@ SCHEMA: list[tuple[str, str, object, str]] = [
         "POST a JSON message to this URL for link and online/offline events. Empty: off.",
     ),
     (
+        "mqtt",
+        "url",
+        "",
+        "MQTT broker for Home Assistant, e.g. mqtt://broker:1883 or mqtts://broker:8883.\n"
+        "# Empty: off. Needs the monitor (monitor.interval_seconds > 0) for live values.",
+    ),
+    ("mqtt", "username", "", "MQTT user name (or put it into the URL)."),
+    ("mqtt", "password", "", "MQTT password (or put it into the URL)."),
+    ("mqtt", "topic_prefix", "switchyard", "Topics are <prefix>/<mac>/state and so on."),
+    ("mqtt", "discovery_prefix", "homeassistant", "Home Assistant's MQTT discovery prefix."),
+    (
+        "mqtt",
+        "allow_control",
+        False,
+        "true = Home Assistant gets a restart button per switch and an on/off switch per port.\n"
+        "# Anyone who can publish to the broker can then use them. Needs stored switch passwords.",
+    ),
+    (
+        "mqtt",
+        "base_url",
+        "",
+        "Address of this web interface, linked from the Home Assistant device page.",
+    ),
+    (
         "demo",
         "enabled",
         False,
@@ -161,10 +185,38 @@ def _from_env(raw: str, default: object) -> object:
     return raw
 
 
+class DataDirError(Exception):
+    """The data folder cannot be created or written; the message says how to fix it."""
+
+
+def check_data_dir(data: Path) -> None:
+    try:
+        data.mkdir(parents=True, exist_ok=True)
+        probe = data / ".switchyard-write-test"
+        probe.write_text("")
+        probe.unlink()
+    except OSError as exc:
+        uid, gid = os.getuid(), os.getgid()
+        try:
+            st = data.stat()
+            owner = f"owned by {st.st_uid}:{st.st_gid}, mode {st.st_mode & 0o777:o}"
+        except OSError:
+            owner = "not accessible"
+        raise DataDirError(
+            f"Switchyard cannot write its data folder {data} ({owner}): {exc.strerror}.\n"
+            f"It runs as user {uid}:{gid} and needs to create files there. Fix one of:\n"
+            f"  - give the folder to that user:   sudo chown -R {uid}:{gid} <host folder>\n"
+            f"  - run the container as the folder's owner, e.g. in docker-compose.yml:\n"
+            f'      user: "1000:1000"   (your id -u / id -g)\n'
+            f"  - use a named Docker volume instead of a bind mount.\n"
+            f"See docs/DEPLOYMENT.md, 'Data folder'."
+        ) from exc
+
+
 def load(data_dir: str | Path | None = None, env: dict[str, str] | None = None) -> Config:
     env = os.environ if env is None else env
     data = Path(data_dir or env.get(ENV_PREFIX + "DATA_DIR") or "data")
-    data.mkdir(parents=True, exist_ok=True)
+    check_data_dir(data)
     config = Config(data)
     if not config.path.exists():
         config.path.write_text(default_file())

@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from .. import __version__
 from ..config import Config
 from ..manager import MAX_FIRMWARE_BYTES, Manager, NotFound
+from ..mqtt import MqttBridge, parse_url
 from ..nsdp import Transport
 from ..nsdp import tags as T
 from ..nsdp.client import AuthError, NsdpError, PasswordRequired, Unreachable
@@ -271,6 +272,9 @@ def error(status: int, code: str, message: str, **extra) -> JSONResponse:
 
 
 def create_app(config: Config) -> FastAPI:
+    audit = Audit(config.data_dir / "audit.log")
+    if config["mqtt.url"]:
+        parse_url(config["mqtt.url"])  # fail at start, not later in the background
     simulator = Simulator(demo_switches()) if config["demo.enabled"] else None
     auth = Auth(
         config.data_dir,
@@ -302,10 +306,15 @@ def create_app(config: Config) -> FastAPI:
             manager.upgrade_settle, manager.upgrade_poll = 0.3, 0.5
         await manager.start()
         app.state.manager = manager
+        bridge = MqttBridge(manager, config, audit.record)
+        manager.monitor.read_admin = bridge.enabled and bridge.allow_control
+        bridge.start()
+        app.state.mqtt = bridge
         log.info("NSDP on UDP %s via %s", transport.client_port, [r.name for r in transport.routes])
         try:
             yield
         finally:
+            await bridge.stop()
             await manager.stop()
             if simulator:
                 simulator.stop()
@@ -318,7 +327,6 @@ def create_app(config: Config) -> FastAPI:
         openapi_url="/api/openapi.json",
         redoc_url=None,
     )
-    audit = Audit(config.data_dir / "audit.log")
     app.add_middleware(BodyLimit)
     app.state.auth = auth
     app.state.audit = audit
@@ -516,6 +524,8 @@ def create_app(config: Config) -> FastAPI:
                 {"name": i.name, "ip": i.ip, "mac": format_mac(i.mac)} for i in list_interfaces()
             ],
             "client_port": m.transport.client_port,
+            "mqtt": {k: v for k, v in app.state.mqtt.status.items() if k != "password"},
+            "monitor_seconds": config["monitor.interval_seconds"],
             "device_port": m.transport.device_port,
             "targets": m.transport.targets,
             "last_scan": m.last_scan,

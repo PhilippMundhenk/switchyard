@@ -35,6 +35,8 @@ class Monitor:
         self._event_id = 0
         self._task: asyncio.Task | None = None
         self._hooks: set[asyncio.Task] = set()
+        self.listeners: list = []  # called with the MAC after every sample or state change
+        self.read_admin = False  # also read port settings (for the MQTT port switches)
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -75,6 +77,10 @@ class Monitor:
         self.manager.seen[mac] = now
         self._set_online(mac, True)
         self.record(mac, ports, now)
+        if self.read_admin:
+            with contextlib.suppress(Unreachable, NsdpError, PasswordRequired):
+                self.state[mac]["admin"] = await self.manager.client(mac).read_port_admin()
+        self._notify(mac)
 
     def record(self, mac: str, ports: list[dict], now: float) -> None:
         buf = self.samples.setdefault(mac, deque(maxlen=self._size))
@@ -116,12 +122,21 @@ class Monitor:
         state["online"] = online
         if was is None and online:
             return
+        if was is not None and was != online and not online:
+            self._notify(mac)
         if was is not None and was != online:
             self.emit(
                 mac,
                 "online" if online else "offline",
                 "Switch answers again" if online else f"Switch stopped answering ({why})",
             )
+
+    def _notify(self, mac: str) -> None:
+        for listener in list(self.listeners):
+            try:
+                listener(mac)
+            except Exception:  # a broken listener must not stop monitoring
+                log.exception("monitor listener failed")
 
     # -- events --------------------------------------------------------------
 
@@ -156,6 +171,25 @@ class Monitor:
             {"port": port, "up": row[3], "speed_mbps": row[4]}
             for port, row in sorted(buf[-1]["ports"].items())
         ]
+
+    def rates(self, mac: str) -> dict[int, tuple[float, float]]:
+        """bit/s received and sent per port between the last two samples."""
+        buf = self.samples.get(mac)
+        if not buf or len(buf) < 2:
+            return {}
+        before, after = buf[-2], buf[-1]
+        dt = after["t"] - before["t"]
+        out = {}
+        for port, row in after["ports"].items():
+            old = before["ports"].get(port)
+            if dt > 0 and old and row[0] >= old[0] and row[1] >= old[1]:
+                out[port] = ((row[0] - old[0]) * 8 / dt, (row[1] - old[1]) * 8 / dt)
+        return out
+
+    def counter(self, mac: str, port: int, name: str) -> int | None:
+        buf = self.samples.get(mac)
+        row = buf[-1]["ports"].get(port) if buf else None
+        return None if row is None else row[{"rx": 0, "tx": 1, "crc": 2}[name]]
 
     def history(self, mac: str, minutes: float = 60) -> dict:
         """Rates in bit/s between consecutive samples, per port and summed (port 0)."""

@@ -9,6 +9,7 @@
 | Changes are refused with "not supported" | The model does not have that feature. The tab says so. |
 | "The switch is not answering" after a reboot | It takes about 30 seconds. Press *Try again*. |
 | Locked out after a VLAN or IP change | Press the reset button of the switch. |
+| "cannot write its data folder" at start | The container runs as user 10001. `sudo chown -R 10001:10001 ./data`, or `user: "1000:1000"` in the compose file, or a named volume. See DEPLOYMENT.md, *Data folder*. |
 | Cannot log in to Switchyard | Without a configured password one is generated on first start and printed once on the console. Run `switchyard reset-password` (Docker: `docker compose run --rm switchyard reset-password`) and restart. |
 | "This host name is not allowed" (421) | Login is disabled, so only IP addresses and `localhost` are accepted, or the name is not in `server.allowed_hosts`. Add the name there. |
 | *Add by IP address* says no switch answers | Check that UDP 63321/63322 pass the router or firewall. Some firmware answers only by broadcast, which no router forwards; manage such a switch from its own segment. |

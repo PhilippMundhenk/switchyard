@@ -44,6 +44,7 @@ flowchart LR
 | `nsdp/tftp.py`, `nsdp/firmware.py` | TFTP client, firmware image checks |
 | `nsdp/transport.py` | sockets, retries, sequence matching, packet log |
 | `nsdp/client.py` | typed reads and authenticated writes for one switch |
+| `mqtt.py` | MQTT publisher with Home Assistant discovery and opt-in commands |
 | `monitor.py`, `notify.py` | background sampling, history, events, metrics, webhook |
 | `config.py`, `store.py` | commented TOML configuration with env overrides; the list of switches |
 | `backups.py`, `diff.py` | stored backups, comparison of two configurations |

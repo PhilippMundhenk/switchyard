@@ -12,6 +12,31 @@ docker compose logs switchyard | grep -i password   # generated password, first 
 
 With host networking `ports:` is ignored; change the web port with `SWITCHYARD_SERVER_PORT`.
 
+## Data folder
+
+Everything Switchyard keeps is in `/data` (the container) or the folder given by `--data` /
+`SWITCHYARD_DATA_DIR`: `switchyard.toml`, `devices.json`, `secrets.json`, `audit.log` and
+`backups/`. It needs about 1 MB plus a few kB per stored backup, no special file system.
+
+The container runs as user **10001**, not as root. The folder must be writable for that user:
+
+- **Named volume** (`switchyard-data:/data`): works as is; Docker takes the ownership from the image.
+- **Bind mount** (`./data:/data`): give the folder to the container user, or run the container
+  as the folder's owner:
+
+  ```sh
+  mkdir -p data && sudo chown 10001:10001 data
+  ```
+
+  ```yaml
+  services:
+    switchyard:
+      user: "1000:1000"   # the output of: id -u, id -g
+  ```
+
+If the folder is not writable, Switchyard stops with a message that names the user and the folder.
+`devices.json` and `secrets.json` are created readable by that user only (mode 0600).
+
 ## Without Docker
 
 ```sh
