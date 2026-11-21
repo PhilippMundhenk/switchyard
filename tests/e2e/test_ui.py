@@ -581,3 +581,22 @@ def test_diagnostics_scan_in_maintenance(app):
     expect(app.locator('[data-testid="diag-row"][data-answers="true"]').first).to_be_visible()
     expect(app.get_by_test_id("diag-body")).to_contain_text("0xa000")
     expect(app.get_by_test_id("diag-copy")).to_be_visible()
+
+
+def test_no_stray_text_outside_demo_mode(page, tmp_path):
+    from .conftest import LiveServer
+
+    server = LiveServer(tmp_path / "live", demo=False)
+    try:
+        page.goto(server.url)
+        page.get_by_test_id("login-password").fill(PASSWORD)
+        page.get_by_test_id("login-submit").click()
+        expect(page.get_by_test_id("scan")).to_be_visible()
+        expect(page.get_by_test_id("demo-banner")).to_have_count(0)
+        body = page.evaluate("document.body.innerText")
+        assert not body.lstrip().startswith("null") and "\\nnull\\n" not in body
+        assert page.evaluate(
+            "[...document.getElementById('app').childNodes].every(n => n.nodeType === 1)"
+        )
+    finally:
+        server.stop()

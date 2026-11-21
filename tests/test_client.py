@@ -576,3 +576,53 @@ async def test_unicast_uses_the_wildcard_socket(sim):
         assert t.packet_log[0]["peer"] == f"203.0.113.7:{t.device_port}"
     finally:
         await t.stop()
+
+
+async def test_firmware_that_answers_empty_when_a_tag_is_unknown():
+    """GS108E v1 (1.00.09): one unknown tag in a read gives an empty, successful reply."""
+    sw = SimSwitch(
+        "02:00:00:00:00:a1",
+        model="GS108E",
+        unknown_tag="empty",
+        unsupported={T.LOOP_DETECTION, T.SERIAL, T.LAG, T.LAG_COUNT, T.PORT_ADMIN},
+    )
+    sim = Simulator([sw])
+    await sim.start()
+    t = Transport(client_port=0, targets=[f"127.0.0.1:{sim.port}"], timeout=0.2, retries=0)
+    await t.start()
+    try:
+        c = client_for(t, sw.mac)
+        info = await c.read_info()
+        assert info["model"] == "GS108E" and info["firmware"] == "1.00.12" and info["ports"] == 8
+        features = await c.read_features()
+        assert features["mirror"] == {"destination": 0, "sources": []}
+        assert features["igmp"]["enabled"] is False and features["loop_detection"] is None
+        assert {T.LOOP_DETECTION, T.SERIAL} <= c.unsupported
+        before = sim.requests
+        await c.read_features()  # known gaps are skipped: one request, no splitting
+        assert sim.requests - before == 1
+        state = await c.read_state()
+        assert state["lag"] is None and state["port_admin"] is None
+        assert state["vlan"]["mode"] == "disabled" and state["qos"]["mode"] == "dot1p"
+    finally:
+        await t.stop()
+        sim.stop()
+
+
+@pytest.mark.parametrize("unknown", ["skip", "status", "silent", "empty"])
+async def test_every_unknown_tag_behaviour_reads_the_same_state(unknown):
+    sw = SimSwitch(
+        "02:00:00:00:00:a2", unknown_tag=unknown, unsupported={T.LOOP_DETECTION, T.SERIAL}
+    )
+    sim = Simulator([sw])
+    await sim.start()
+    t = Transport(client_port=0, targets=[f"127.0.0.1:{sim.port}"], timeout=0.15, retries=0)
+    await t.start()
+    try:
+        state = await client_for(t, sw.mac).read_state()
+        assert state["info"]["model"] == "GS108E" and state["info"]["serial"] is None
+        assert state["mirror"] is not None and state["igmp"] is not None
+        assert state["loop_detection"] is None and len(state["ports"]) == 8
+    finally:
+        await t.stop()
+        sim.stop()

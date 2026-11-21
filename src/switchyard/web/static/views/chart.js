@@ -18,7 +18,7 @@ export function niceMax(value) {
 
 // points: [[t, rx_bps, tx_bps], ...]
 export function drawChart(points, { width = 760, height = 220 } = {}) {
-  const pad = { l: 64, r: 12, t: 10, b: 24 };
+  const pad = { l: 88, r: 12, t: 10, b: 24 };
   const svg = el('svg', { viewBox: `0 0 ${width} ${height}`, class: 'chart', role: 'img', 'aria-label': 'Traffic over time', 'data-testid': 'chart' });
   const w = width - pad.l - pad.r;
   const h = height - pad.t - pad.b;

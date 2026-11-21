@@ -49,10 +49,10 @@ async function overview(host, S) {
   host.append(
     section('Ports', panel, note),
     section('Identity', h('dl', { class: 'kv', 'data-testid': 'identity' },
-      ...[['Model', info.model], ['Name', info.name || '–'], ['MAC address', info.mac], ['Serial number', info.serial || '–'],
-        ['Firmware', info.firmware || '–'], ['IP address', `${info.ip || '?'} ${info.dhcp ? '(DHCP)' : '(static)'}`],
+      ...[['Model', info.model || '–'], ['Name', info.name || '–'], ['MAC address', info.mac], ['Serial number', info.serial || '–'],
+        ['Firmware', info.firmware || '–'], ['IP address', info.ip ? `${info.ip} ${info.dhcp ? '(DHCP)' : '(static)'}` : '–'],
         ['Subnet mask', info.netmask || '–'], ['Gateway', info.gateway || '–'], ['Ports', info.ports], ['Password scheme', info.password_mode]]
-        .flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))]))),
+        .flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v === null || v === undefined || v === '' ? '–' : String(v))]))),
   );
   poll(S, async () => {
     try {

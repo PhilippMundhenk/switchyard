@@ -1,6 +1,6 @@
 // Entry point: session handling, shell and hash router.
 import { api, get, onUnauthorized, post } from './api.js';
-import { clear, h } from './util.js';
+import { append, clear, h } from './util.js';
 import { showError, toast } from './ui.js';
 import { renderSwitches } from './views/switches.js';
 import { renderDetail } from './views/detail.js';
@@ -117,10 +117,10 @@ async function render() {
       } }, 'Log out'),
     );
   }
-  root.append(
+  append(root, [
     session.demo ? h('div', { class: 'banner', 'data-testid': 'demo-banner' }, 'Demo mode: simulated switches, no network is used.') : null,
     h('header', { class: 'topbar' }, h('a', { class: 'brand', href: '#/' }, LOGO(), 'Switchyard'), nav, actions),
-  );
+  ]);
   const main = h('main', { id: 'main' });
   root.append(main, footer(session));
   try {

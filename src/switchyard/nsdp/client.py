@@ -155,25 +155,40 @@ class SwitchClient:
         return Packet(Op.READ_RESPONSE, device_mac=self.mac)
 
     async def read(self, request: list[int | tuple[int, bytes]]) -> Packet:
-        """Read several settings; survives switches that ignore unknown tags.
+        """Read several settings; survives the ways firmware treats tags it does not know.
 
-        Some firmware does not answer at all when a request holds a tag it
-        does not know. If a group times out but the switch is alive, the
-        group is split until the offending tags are found.
+        Firmware may leave unknown tags out, answer with an error, not answer at all, or
+        (GS108E v1) answer the whole request with an empty, successful reply. In the last
+        two cases the group is read again one tag at a time, and tags the switch does not
+        have are remembered so later reads skip them.
         """
         items = [(r, b"") if isinstance(r, int) else r for r in request]
+        items = [i for i in items if i[0] not in self.unsupported]
         try:
-            return await self._read(items)
+            reply = await self._read(items)
         except Unreachable:
             if len(items) <= 1:
                 raise
-        await self._exchange(Op.READ_REQUEST, [(T.MODEL, b"")])  # alive at all?
+            await self._exchange(Op.READ_REQUEST, [(T.MODEL, b"")])  # alive at all?
+            return await self._read_each(items, missing_on_silence=True)
+        asked = {t for t, _ in items}
+        if len(items) > 1 and not any(t in asked for t, _ in reply.tlvs):
+            return await self._read_each(items, missing_on_silence=False)
+        return reply
+
+    async def _read_each(self, items: list[tuple[int, bytes]], missing_on_silence: bool) -> Packet:
         merged = Packet(Op.READ_RESPONSE, device_mac=self.mac)
         for item in items:
             try:
-                merged.tlvs += (await self._read([item])).tlvs
+                single = await self._read([item])
             except Unreachable:
+                if not missing_on_silence:
+                    raise
                 self.unsupported.add(item[0])
+                continue
+            if not single.has(item[0]):
+                self.unsupported.add(item[0])
+            merged.tlvs += single.tlvs
         return merged
 
     async def _credentials(self, password: str) -> tuple[int, bytes]:

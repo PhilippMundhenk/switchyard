@@ -50,7 +50,8 @@ class SimSwitch:
     links: list[int] = field(default_factory=list)
     unsupported: set[int] = field(default_factory=set)
     # "status": answer unknown tags with error 3; "skip": leave them out;
-    # "silent": do not answer the whole request (seen on old firmware)
+    # "silent": do not answer the whole request (seen on old firmware);
+    # "empty": answer the whole request with an empty success reply (GS108E v1 1.00.09)
     unknown_tag: str = "skip"
     reboot_seconds: float = 3.0
     max_vlans: int = 32
@@ -143,6 +144,8 @@ class SimSwitch:
         for tag, value in request.tlvs:
             values = None if tag in self.unsupported else self._get(tag, value)
             if values is None:
+                if self.unknown_tag == "empty":
+                    return self._reply(request)  # GS108E v1: nothing at all, but "success"
                 if self.unknown_tag == "silent":
                     return None
                 if self.unknown_tag == "status":

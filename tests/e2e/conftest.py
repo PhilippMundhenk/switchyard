@@ -23,11 +23,12 @@ def _free_port() -> int:
 
 
 class LiveServer:
-    def __init__(self, data: Path):
+    def __init__(self, data: Path, demo: bool = True):
         self.port = _free_port()
         env = {
             **os.environ,
-            "SWITCHYARD_DEMO_ENABLED": "true",
+            "SWITCHYARD_DEMO_ENABLED": "true" if demo else "false",
+            "SWITCHYARD_NSDP_TARGETS": "127.0.0.1:9",  # outside demo mode: nobody answers
             "SWITCHYARD_AUTH_PASSWORD": PASSWORD,
             "SWITCHYARD_AUTH_VIEWER_PASSWORD": "e2e-viewer-1",
             "SWITCHYARD_SERVER_HOST": "127.0.0.1",
