@@ -24,7 +24,7 @@ interface at all, so this is the only way to configure them.
 
 | Switch | Status |
 | --- | --- |
-| GS108E | works (maintainer's switch: discovery, reading, configuration) |
+| GS108E v1 (firmware 1.00.09) | works: discovery, status, VLANs, QoS, name and IP settings |
 | GS105E (first generation), other GS108E revisions | expected to work, reports welcome |
 | GS105E v2, GS110EMX, JGS516PE, JGS524PE, XS-series | may work, reports welcome |
 | Newer firmware with the Plus Utility turned off | needs a setting change, see [troubleshooting](docs/TROUBLESHOOTING.md) |
