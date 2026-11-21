@@ -51,16 +51,24 @@ def broker(tmp_path_factory):
             "    allow_anonymous: true\n"
         )
         cmd = [str(Path(sys.executable).parent / "amqtt"), "-c", str(conf)]
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for _ in range(100):
+    log = folder / "broker.log"
+    with log.open("wb") as out:
+        proc = subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT)
+    for _ in range(300):
         try:
             socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
             break
         except OSError:
+            if proc.poll() is not None:
+                break
             time.sleep(0.1)
     else:
         proc.kill()
-        pytest.skip("no MQTT broker could be started")
+    if proc.poll() is not None or proc.returncode is not None:
+        message = f"MQTT broker {cmd[0]} did not start:\n{log.read_text()[-2000:]}"
+        if os.environ.get("CI"):
+            pytest.fail(message)  # in CI a broker is installed: never hide this as a skip
+        pytest.skip(message)
     yield port
     proc.terminate()
     proc.wait(10)
