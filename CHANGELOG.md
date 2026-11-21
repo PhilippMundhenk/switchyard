@@ -14,6 +14,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
   new `switchyard reset-password` (#48).
 
 ### Fixed
+- MQTT: the 'offline' status could be lost on shutdown, so Home Assistant kept showing Switchyard as online.
 - Phone layout: no sideways scrolling; section drop-down instead of the tab strip, one block per port in tables, VLAN and LAG matrices with ports as rows (#55).
 - GS108E v1 firmware that answers an empty reply when a read contains an unknown setting: identity, mirroring and IGMP were missing (#53).
 - Stray 'null' text above the header outside demo mode (#54).

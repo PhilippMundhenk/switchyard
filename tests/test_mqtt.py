@@ -91,8 +91,10 @@ class Recorder:
         self.lock = threading.Lock()
         self.client = paho.Client(paho.CallbackAPIVersion.VERSION2, client_id=f"rec-{prefix}")
         self.client.on_message = self._on_message
+        # subscribe on every (re)connect: a broker may drop an idle client, and a
+        # reconnected client without its subscription would keep stale values
+        self.client.on_connect = lambda c, u, f, r, p=None: c.subscribe("#", qos=1)
         self.client.connect("127.0.0.1", port)
-        self.client.subscribe("#", qos=1)
         self.client.loop_start()
 
     def _on_message(self, client, userdata, msg):
@@ -107,7 +109,10 @@ class Recorder:
                     return dict(self.messages)
             time.sleep(0.1)
         with self.lock:
-            raise AssertionError(f"timed out; topics: {sorted(self.messages)[:40]}")
+            status = {t: v for t, v in self.messages.items() if t.endswith("/status")}
+            raise AssertionError(
+                f"timed out; status: {status}; topics: {sorted(self.messages)[:40]}"
+            )
 
     def publish(self, topic: str, payload: str):
         self.client.publish(topic, payload, qos=1).wait_for_publish(5)
@@ -228,7 +233,12 @@ def test_discovery_state_and_availability(tmp_path, sim, broker):
             # removing the switch removes its entities (empty retained configs)
             assert c.delete(f"/api/devices/{MAC}").status_code == 200
             rec.wait(lambda m: m.get(f"ha-t1/binary_sensor/{NODE}/port1_link/config") == b"")
-        msgs = rec.wait(lambda m: m.get("t1/status") == b"offline")
+        # what Home Assistant sees after a restart of its own: the retained status
+        late = Recorder(broker, "t1-late")
+        try:
+            late.wait(lambda m: m.get("t1/status") == b"offline")
+        finally:
+            late.close()
     finally:
         rec.close()
 

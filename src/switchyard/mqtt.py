@@ -7,6 +7,7 @@ commands (reboot, port on/off) are only accepted when ``mqtt.allow_control`` is 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -107,7 +108,15 @@ class MqttBridge:
         if not self.client:
             return
         try:
-            self.client.publish(f"{self.prefix}/status", "offline", qos=1, retain=True)
+            info = self.client.publish(f"{self.prefix}/status", "offline", qos=1, retain=True)
+            if self.client.is_connected():
+                # a clean disconnect does not trigger the last will: the broker must have
+                # this message before the connection closes, or Home Assistant keeps
+                # showing Switchyard as online
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(info.wait_for_publish, 3)
+                # some brokers acknowledge before they have stored the message
+                await asyncio.sleep(0.3)
             self.client.disconnect()
         finally:
             await asyncio.to_thread(self.client.loop_stop)
