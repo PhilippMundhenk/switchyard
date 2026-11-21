@@ -158,17 +158,17 @@ class EasySmartClient(SwitchDriver):
             raise EasySmartError(reply[0].error, T.KEY_EXCHANGE)
         self.generation = "B"
 
-    async def _get(self, tag: int) -> Packet:
+    async def _get(self, tag: int, **kw) -> Packet:
         """Read one setting (the switch answers one per request, plus related ones)."""
         await self._session()
         try:
-            reply = await self._exchange(Op.GET, [(tag, b"")])
+            reply = await self._exchange(Op.GET, [(tag, b"")], **kw)
         except Unreachable:
             if self.generation != "B":
                 raise
             self.forget_session()  # the switch restarted and lost the session: once more
             await self._session()
-            reply = await self._exchange(Op.GET, [(tag, b"")])
+            reply = await self._exchange(Op.GET, [(tag, b"")], **kw)
         if reply.error:
             raise EasySmartError(reply.error, tag)
         return reply
@@ -179,9 +179,9 @@ class EasySmartClient(SwitchDriver):
             return None
         await self._port_count()  # the switch itself answers: silence below means "unknown"
         try:
-            reply = await self._get(tag)
+            # firmware stays silent for settings it does not know: do not wait long for those
+            reply = await self._get(tag, timeout=min(self.transport.timeout, 0.8), retries=1)
         except Unreachable:
-            # firmware ignores settings it does not know
             self.unsupported.add(tag)
             return None
         except EasySmartError:

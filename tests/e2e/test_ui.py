@@ -35,10 +35,13 @@ def test_login_errors_and_logout(page, server):
 def test_scan_add_and_remove(app):
     app.get_by_test_id("scan").click()
     rows = app.get_by_test_id("found-row")
-    expect(rows).to_have_count(4)
+    expect(rows).to_have_count(6)  # 4 NETGEAR, 2 TP-Link
+    expect(app.locator('[data-testid="found-row"][data-mac="50:c7:bf:5e:00:01"]')).to_contain_text(
+        "TP-Link TL-SG108PE"
+    )
     app.locator(f'[data-testid="found-row"][data-mac="{MAC}"] [data-testid="add-found"]').click()
     expect(app.get_by_test_id("switch-card")).to_have_count(1)
-    expect(app.get_by_test_id("found-row")).to_have_count(3)
+    expect(app.get_by_test_id("found-row")).to_have_count(5)
     app.get_by_test_id("switch-card").click()
     expect(app.get_by_test_id("switch-title")).to_have_text("office")
     app.get_by_test_id("tab-maintenance").click()
@@ -84,6 +87,25 @@ def test_wrong_then_right_switch_password_retries_the_action(app):
     state = api(app, "GET", f"/devices/{MAC}/state").json()
     assert state["loop_detection"] is True
     assert api(app, "GET", f"/devices/{MAC}").json()["remembered"] is True
+
+
+def test_tplink_switch_asks_for_user_and_password(app):
+    tp = "50:c7:bf:5e:00:01"
+    add_switch(app, tp)
+    open_tab(app, "features", tp)
+    expect(app.get_by_test_id("loop-enabled")).to_be_visible()
+    app.get_by_test_id("loop-enabled").check()
+    app.get_by_test_id("loop-save").click()
+    expect(app.get_by_test_id("switch-username")).to_have_value("admin")
+    app.get_by_test_id("switch-password").fill("wrong")
+    app.get_by_test_id("switch-login-ok").click()
+    expect(app.get_by_test_id("switch-login-error")).to_contain_text("Incorrect user name")
+    app.get_by_test_id("switch-password").fill("admin")
+    app.get_by_test_id("switch-login-ok").click()
+    expect(app.locator(".toast").last).to_contain_text("Loop detection saved")
+    assert api(app, "GET", f"/devices/{tp}/state").json()["loop_detection"] is True
+    open_tab(app, "ports", tp)
+    expect(app.get_by_test_id("stat-1")).to_contain_text("pkts")
 
 
 def test_cancelling_the_password_dialog_changes_nothing(app):
