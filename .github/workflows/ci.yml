@@ -80,6 +80,17 @@ jobs:
           path: docs/screenshots/*.png
           retention-days: 14
 
+  home-assistant:
+    name: Discovery messages pass Home Assistant's schemas
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13", cache: pip }
+      - run: pip install homeassistant paho-mqtt
+      - run: python tools/validate_ha_discovery.py
+
   consistency:
     name: Docs match the code
     runs-on: ubuntu-latest

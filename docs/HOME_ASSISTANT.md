@@ -83,6 +83,14 @@ Notes:
 `<mac>` is the MAC address without colons. The prefixes are `mqtt.topic_prefix` and
 `mqtt.discovery_prefix`. Removing a switch from Switchyard removes its entities.
 
+## How it is tested
+
+- Against a real broker (mosquitto in CI, amqtt locally): discovery, state, availability, last
+  will, removal, and the control commands end to end.
+- `python tools/validate_ha_discovery.py` (in an environment with Home Assistant installed; a CI
+  job does this) validates every discovery message with Home Assistant's own MQTT schemas and
+  renders every value template. Last local run: Home Assistant 2026.2.3, 95 messages valid.
+
 ## Other ways
 
 - `GET /metrics` for Prometheus and Grafana.

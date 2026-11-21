@@ -40,6 +40,8 @@ Set `SWITCHYARD_CHROMIUM` to a Chromium binary; both the e2e tests and the scree
   config keys, routes, modules, retired terms, closed-issue references, changelog structure, screenshot
   freshness. CI runs it; run it before a release (`--version x.y.z`).
 - `python tools/check_js.py` syntax-checks the UI scripts.
+- `python tools/validate_ha_discovery.py` (with Home Assistant installed) checks the MQTT
+  discovery messages against Home Assistant's schemas.
 
 ## Release
 
