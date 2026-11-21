@@ -1,6 +1,6 @@
 // Shared UI pieces: toasts, modal dialogs, the switch password prompt.
 import { api, ApiError, dev } from './api.js';
-import { clear, h } from './util.js';
+import { clear, download, h } from './util.js';
 
 export function toast(message, kind = 'ok') {
   const root = document.getElementById('toasts');
@@ -187,4 +187,38 @@ export async function run(button, fn) {
   } finally {
     button.disabled = false;
   }
+}
+
+// Copy text for a bug report. The clipboard API only exists on HTTPS (or localhost); on a plain
+// HTTP LAN address fall back to execCommand, and if that fails too show the text to select.
+export async function copyText(text, filename = 'switchyard-report.txt') {
+  if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Copied.');
+      return 'clipboard';
+    } catch (err) { /* fall through */ }
+  }
+  const area = h('textarea', { readonly: true, rows: '10', 'aria-label': 'Report text', 'data-testid': 'copy-text' });
+  area.value = text;
+  document.body.append(area);
+  area.select();
+  let copied = false;
+  try { copied = document.execCommand('copy'); } catch (err) { copied = false; }
+  area.remove();
+  if (copied) {
+    toast('Copied.');
+    return 'execCommand';
+  }
+  modal({
+    title: 'Copy this text',
+    body: h('div', {}, h('p', { class: 'muted' }, 'Your browser does not allow copying from this page (it is not served over HTTPS). Select the text and copy it, or download it.'), area),
+    actions: (close) => [
+      h('button', { class: 'btn', 'data-testid': 'copy-download', onclick: () => download(filename, text, 'text/plain') }, 'Download'),
+      h('button', { class: 'btn primary', onclick: close }, 'Close'),
+    ],
+  });
+  area.focus();
+  area.select();
+  return 'dialog';
 }

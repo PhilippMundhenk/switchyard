@@ -2,7 +2,7 @@
 import { ApiError, del, dev, get, patch, post, put } from '../api.js';
 import { clear, download, fmtBytes, fmtLimit, fmtRate, h, portList, validateDot1q, validateNetwork } from '../util.js';
 import { drawChart } from './chart.js';
-import { confirmDialog, field, modal, run, section, select, showError, toast, unsupported, withSwitchAuth } from '../ui.js';
+import { copyText, confirmDialog, field, modal, run, section, select, showError, toast, unsupported, withSwitchAuth } from '../ui.js';
 
 const portName = (S, p) => (S.state.device.port_labels || {})[p] || '';
 const vlanName = (S, id) => (S.state.device.vlan_names || {})[id] || '';
@@ -16,6 +16,67 @@ export function stackable(table) {
     [...row.children].forEach((cell, i) => { if (names[i]) cell.dataset.label = names[i]; });
   }
   return table;
+}
+
+const isPhone = () => window.matchMedia('(max-width: 640px)').matches;
+
+// Phone editor for per-port settings: a row of port chips and one form that sets the value of
+// every selected port. The per-port controls stay the model, so Apply works unchanged.
+function portChipEditor(S, ports, fields, onChange) {
+  const selected = new Set([ports[0]]);
+  const chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Ports to edit', 'data-testid': 'port-chips' });
+  const form = h('div', { class: 'chip-form', 'data-testid': 'chip-form' });
+  const summary = h('ul', { class: 'chip-summary muted', 'data-testid': 'chip-summary' });
+  const textOf = (c) => (c.type === 'checkbox' ? (c.checked ? 'on' : 'off') : c.options[c.selectedIndex].text);
+  const isDefault = (f, p) => {
+    const c = f.controls[p];
+    if (f.neutral) return f.neutral(c);
+    return c.type === 'checkbox' ? !c.checked : c.selectedIndex === 0;
+  };
+  const draw = () => {
+    clear(chips);
+    for (const p of ports) {
+      const changed = fields.some((f) => !isDefault(f, p));
+      chips.append(h('button', { class: `chip ${selected.has(p) ? 'on' : ''} ${changed ? 'changed' : ''}`, 'aria-pressed': String(selected.has(p)), 'aria-label': `Port ${p}${changed ? ', has settings' : ''}`, 'data-testid': `chip-${p}`,
+        onclick: () => { if (selected.has(p) && selected.size > 1) selected.delete(p); else selected.add(p); draw(); } }, String(p), portName(S, p) ? h('small', {}, portName(S, p)) : null));
+    }
+    chips.append(h('button', { class: 'chip all', 'data-testid': 'chip-all', onclick: () => { ports.forEach((p) => selected.add(p)); draw(); } }, 'All'));
+    const first = [...selected].sort((a, b) => a - b)[0];
+    clear(form).append(h('p', { class: 'muted' }, `Port${selected.size > 1 ? 's' : ''} ${portList(selected)}`));
+    for (const f of fields) {
+      const model = f.controls[first];
+      let editor;
+      if (model.type === 'checkbox') {
+        editor = h('input', { type: 'checkbox', checked: model.checked, disabled: model.disabled, 'data-testid': `edit-${f.key}` });
+        form.append(h('label', { class: 'check' }, editor, ` ${f.label}`));
+      } else {
+        editor = model.cloneNode(true);
+        editor.value = model.value;
+        editor.disabled = model.disabled;
+        editor.removeAttribute('data-testid');
+        editor.setAttribute('data-testid', `edit-${f.key}`);
+        editor.setAttribute('aria-label', f.label);
+        form.append(field(f.label, editor));
+      }
+      editor.addEventListener('change', () => {
+        for (const p of selected) {
+          const c = f.controls[p];
+          if (c.type === 'checkbox') c.checked = editor.checked; else c.value = editor.value;
+          c.dispatchEvent(new Event('change'));
+        }
+        draw();
+        if (onChange) onChange();
+      });
+    }
+    clear(summary);
+    for (const p of ports) {
+      const parts = fields.filter((f) => !isDefault(f, p)).map((f) => `${f.short || f.label} ${textOf(f.controls[p])}`);
+      if (parts.length) summary.append(h('li', {}, h('b', {}, `Port ${p}: `), parts.join(', ')));
+    }
+    if (!summary.childNodes.length) summary.append(h('li', {}, 'All ports use the defaults.'));
+  };
+  draw();
+  return { element: h('div', { class: 'chip-editor' }, chips, form, summary), redraw: draw };
 }
 
 const speedClass = (p) => (p.up ? `s${Math.min(p.speed_mbps || 10, 10000)}` : 'down');
@@ -130,16 +191,35 @@ async function ports(host, S) {
         h('td', { class: 'num' }, String(p.crc_errors ?? 0))));
     }
     previous = { t, rows: new Map(rows.map((p) => [p.port, p])) };
-    if (body.parentNode) stackable(body.parentNode);
   };
-  draw(S.state.ports, Date.now());
+  const list = h('div', { class: 'portlist', 'data-testid': 'stats-list' });
+  const drawList = (rows, t) => {
+    clear(list);
+    for (const p of rows) {
+      const before = previous && previous.rows.get(p.port);
+      const dt = previous ? (t - previous.t) / 1000 : 0;
+      const rate = (a, b) => (before && dt > 0 && a >= b ? (a - b) / dt : null);
+      const rx = rate(p.rx_bytes, before && before.rx_bytes);
+      const tx = rate(p.tx_bytes, before && before.tx_bytes);
+      list.append(h('div', { class: `prow ${p.up ? '' : 'down'}`, 'data-testid': `stat-${p.port}` },
+        h('span', { class: `badge ${speedClass(p)}` }, String(p.port)),
+        h('div', { class: 'pmain' },
+          h('div', {}, h('b', {}, p.up ? p.link : 'down'), portName(S, p.port) ? h('span', { class: 'muted' }, ` · ${portName(S, p.port)}`) : null,
+            p.crc_errors ? h('span', { class: 'error' }, ` · ${p.crc_errors} CRC errors`) : null),
+          h('div', { class: 'muted small' }, p.up && rx !== null ? `now ↓ ${fmtRate(rx)}  ↑ ${fmtRate(tx)}` : '')),
+        h('div', { class: 'ptotals' }, h('div', { title: `${p.rx_bytes} bytes received` }, `↓ ${fmtBytes(p.rx_bytes)}`), h('div', { title: `${p.tx_bytes} bytes sent` }, `↑ ${fmtBytes(p.tx_bytes)}`))));
+    }
+  };
+  const phone = isPhone();
+  const render = (rows, t) => { if (phone) { drawList(rows, t); previous = { t, rows: new Map(rows.map((p) => [p.port, p])) }; } else draw(rows, t); };
+  render(S.state.ports, Date.now());
   const clearBtn = h('button', { class: 'btn', 'data-testid': 'clear-counters' }, 'Clear counters');
   clearBtn.addEventListener('click', () => applier(S)(clearBtn, () => post(`${dev(S.mac)}/stats/reset`), 'Counters cleared.'));
   host.append(section('Port status and statistics',
-    h('div', { class: 'table-wrap' }, stackable(h('table', { class: 'compact' },
-      h('thead', {}, h('tr', {}, ...['Port', 'Link', 'Duplex', 'Received', 'Rx rate', 'Sent', 'Tx rate', 'CRC errors'].map((t, i) => h('th', { class: i > 2 ? 'num' : '' }, t)))), body))),
+    phone ? list : h('div', { class: 'table-wrap' }, h('table', {},
+      h('thead', {}, h('tr', {}, ...['Port', 'Link', 'Duplex', 'Received', 'Rx rate', 'Sent', 'Tx rate', 'CRC errors'].map((t, i) => h('th', { class: i > 2 ? 'num' : '' }, t)))), body)),
     h('p', {}, clearBtn)));
-  poll(S, async () => draw((await get(`${dev(S.mac)}/ports`)).ports, Date.now()), 3000);
+  poll(S, async () => render((await get(`${dev(S.mac)}/ports`)).ports, Date.now()), 3000);
 
   // traffic history (needs the background monitor)
   const chartBox = h('div', { 'data-testid': 'chart-box' });
@@ -296,9 +376,17 @@ async function qos(host, S) {
       storm[p] = select(rates, q.storm_rates[p] ?? 0, { 'aria-label': `Storm control rate of port ${p}`, 'data-testid': `storm-${p}` });
       return h('tr', {}, h('td', {}, String(p)), h('td', {}, prio[p]), h('td', {}, ingress[p]), h('td', {}, egress[p]), h('td', {}, storm[p]));
     })));
-  stackable(table);
   const stormOn = h('input', { type: 'checkbox', checked: Boolean(q.storm_control), disabled: q.storm_control === null, 'data-testid': 'storm-enabled' });
-  const sync = () => { for (const p of allPorts) { prio[p].disabled = mode.value !== 'port'; storm[p].disabled = !stormOn.checked; } };
+  let editor = null;
+  const sync = () => { for (const p of allPorts) { prio[p].disabled = mode.value !== 'port'; storm[p].disabled = !stormOn.checked; } if (editor) editor.redraw(); };
+  if (isPhone()) {
+    editor = portChipEditor(S, allPorts, [
+      { key: 'prio', label: 'Priority', controls: prio, neutral: (c) => c.value === 'normal' },
+      { key: 'ingress', label: 'Ingress limit', short: 'in', controls: ingress },
+      { key: 'egress', label: 'Egress limit', short: 'out', controls: egress },
+      { key: 'storm', label: 'Storm control rate', short: 'storm', controls: storm },
+    ]);
+  }
   mode.addEventListener('change', sync); stormOn.addEventListener('change', sync); sync();
   const save = h('button', { class: 'btn primary', 'data-testid': 'qos-save' }, 'Apply');
   save.addEventListener('click', async () => {
@@ -316,7 +404,7 @@ async function qos(host, S) {
     await apply(save, () => put(`${dev(S.mac)}/qos`, body), 'QoS settings saved.');
   });
   host.append(section('Quality of service', field('QoS mode', mode, 'Port priorities can be set in port-based mode only.'),
-    h('label', { class: 'check' }, stormOn, ' Broadcast storm control'), h('div', { class: 'table-wrap' }, table), h('p', {}, save)));
+    h('label', { class: 'check' }, stormOn, ' Broadcast storm control'), editor ? editor.element : h('div', { class: 'table-wrap' }, table), h('p', {}, save)));
 }
 
 // ---------------------------------------------------------------- features
@@ -417,9 +505,13 @@ async function portSettings(host, S) {
     if (off.length && !(await confirmDialog({ title: 'Turn ports off', message: `Port ${off.join(', ')} will be switched off. If this server reaches the switch through such a port, you lose the connection.`, confirmLabel: 'Apply', danger: true }))) return;
     await apply(save, () => put(`${dev(S.mac)}/port-settings`, { ports: changed }), 'Port settings saved.');
   });
+  const editor = isPhone() ? portChipEditor(S, Object.keys(admin).map(Number).sort((a, b) => a - b), [
+    { key: 'speed', label: 'Speed setting', short: 'speed', controls: speedSel },
+    { key: 'flow', label: 'Flow control', short: 'flow control', controls: flow },
+  ]) : null;
   host.append(section('Port speed and flow control',
     h('p', { class: 'muted' }, 'Auto negotiates. Fixed speeds need the same setting on the device at the other end. Members of a link aggregation group must share one setting.'),
-    h('div', { class: 'table-wrap' }, stackable(h('table', { class: 'controls' }, h('thead', {}, h('tr', {}, ...['Port', 'Link now', 'Speed setting', 'Flow control'].map((t) => h('th', {}, t)))), h('tbody', {}, rows)))),
+    editor ? editor.element : h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ...['Port', 'Link now', 'Speed setting', 'Flow control'].map((t) => h('th', {}, t)))), h('tbody', {}, rows))),
     h('p', {}, save)));
 }
 
@@ -668,7 +760,7 @@ async function maintenance(host, S) {
       h('tbody', { 'data-testid': 'diag-body' }, ...rows.map((r) => h('tr', { 'data-testid': 'diag-row', 'data-answers': String(r[2] === 'answers') }, h('td', { class: 'mono' }, r[0]), h('td', {}, r[1]), h('td', {}, r[2]), h('td', { class: 'mono' }, r[3])))))));
     copyBtn.hidden = false;
   }));
-  copyBtn.addEventListener('click', async () => { try { await navigator.clipboard.writeText(scanText); toast('Copied.'); } catch (e) { toast('Copy is not available in this browser.', 'error'); } });
+  copyBtn.addEventListener('click', () => copyText(scanText, 'switchyard-diagnostics.txt'));
 
   host.append(
     section('This entry', field('Label', label), field('Notes', notes), field('Fixed address', address, 'Set this for a switch on another subnet; Switchyard then talks to it directly.'),

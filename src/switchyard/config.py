@@ -53,7 +53,8 @@ SCHEMA: list[tuple[str, str, object, str]] = [
         "nsdp",
         "interfaces",
         [],
-        'Network interfaces to search for switches, e.g. ["eth0"]. Empty: all.',
+        'Network interfaces to search for switches, e.g. ["eth0"]. Empty: all except the\n'
+        "# bridges of Docker, Podman, libvirt and Kubernetes (docker0, br-..., veth..., virbr...).",
     ),
     (
         "nsdp",

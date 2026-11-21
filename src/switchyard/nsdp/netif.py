@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fcntl
+import re
 import socket
 import struct
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from pathlib import Path
 
 SIOCGIFFLAGS = 0x8913
 SIOCGIFADDR = 0x8915
+SIOCGIFNETMASK = 0x891B
 IFF_UP = 0x1
 IFF_BROADCAST = 0x2
 IFF_LOOPBACK = 0x8
@@ -20,6 +22,7 @@ class Interface:
     name: str
     ip: str
     mac: bytes
+    netmask: str = ""
 
 
 def _ioctl(sock: socket.socket, request: int, name: str) -> bytes:
@@ -45,5 +48,17 @@ def list_interfaces() -> list[Interface]:
                 ip = socket.inet_ntoa(_ioctl(sock, SIOCGIFADDR, name)[20:24])
             except OSError:
                 continue  # interface without an IPv4 address
-            found.append(Interface(name, ip, read_mac(name)))
+            try:
+                mask = socket.inet_ntoa(_ioctl(sock, SIOCGIFNETMASK, name)[20:24])
+            except OSError:  # pragma: no cover - every IPv4 interface has a mask
+                mask = ""
+            found.append(Interface(name, ip, read_mac(name), mask))
     return found
+
+
+# Bridges and tunnels of container and VM managers: switches are never behind them.
+VIRTUAL = re.compile(r"^(docker\d*|br-[0-9a-f]+|veth|virbr|cni|flannel|vxlan|lxc|lxd|podman|kube)")
+
+
+def is_virtual(name: str) -> bool:
+    return bool(VIRTUAL.match(name))

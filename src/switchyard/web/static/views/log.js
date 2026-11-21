@@ -1,6 +1,6 @@
 import { get } from '../api.js';
 import { clear, h } from '../util.js';
-import { toast } from '../ui.js';
+import { copyText } from '../ui.js';
 import { stackable } from './tabs.js';
 
 export async function renderLog(main, ctx) {
@@ -15,7 +15,7 @@ export async function renderLog(main, ctx) {
   const copy = h('button', { class: 'btn', 'data-testid': 'log-copy' }, 'Copy for bug report');
   const clearBtn = h('button', { class: 'btn', 'data-testid': 'log-clear' }, 'Clear');
   main.append(
-    h('div', { class: 'page-head' }, h('h1', {}, 'Activity'), filter, pause, clearBtn, copy),
+    h('div', { class: 'page-head' }, h('h1', {}, 'Protocol log'), filter, pause, clearBtn, copy),
     h('p', { class: 'muted' }, 'Every message sent to or received from a switch. Passwords are blanked. Click a row for the raw bytes.'),
     h('div', { class: 'card table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ...['Time', 'Dir', 'Peer', 'Switch', 'Message', 'Bytes'].map((t) => h('th', {}, t)))), body)));
 
@@ -45,7 +45,7 @@ export async function renderLog(main, ctx) {
   copy.addEventListener('click', async () => {
     const text = entries.filter((e) => !filter.value || e.device === filter.value).slice(-100)
       .map((e) => `${new Date(e.time * 1000).toISOString()} ${e.direction} ${e.peer} ${e.device || '-'} ${e.summary} | ${e.hex}`).join('\n');
-    try { await navigator.clipboard.writeText(text); toast('Copied.'); } catch (err) { toast('Copy is not available in this browser.', 'error'); }
+    await copyText(text, 'switchyard-protocol-log.txt');
   });
   await fetchMore();
   const timer = setInterval(() => fetchMore().catch(() => {}), 2000);

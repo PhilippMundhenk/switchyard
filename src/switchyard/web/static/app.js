@@ -9,7 +9,8 @@ import { renderEvents } from './views/events.js';
 import { renderSettings } from './views/settings.js';
 
 const root = document.getElementById('app');
-const state = { session: null, cleanup: null, dirty: () => false };
+const state = { session: null, cleanups: [], dirty: () => false };
+const runCleanups = () => { for (const fn of state.cleanups.splice(0)) fn(); };
 
 export const ctx = {
   navigate(hash) {
@@ -19,7 +20,7 @@ export const ctx = {
     state.dirty = fn;
   },
   onCleanup(fn) {
-    state.cleanup = fn;
+    state.cleanups.push(fn); // every poll and listener of a page is stopped when it is left
   },
 };
 
@@ -90,8 +91,7 @@ function renderLogin(message) {
 }
 
 async function render() {
-  if (state.cleanup) state.cleanup();
-  state.cleanup = null;
+  runCleanups();
   state.dirty = () => false;
   const route = routeInfo();
   const session = state.session;
@@ -158,7 +158,7 @@ window.addEventListener('beforeunload', (e) => {
 onUnauthorized(() => {
   if (state.session && state.session.authenticated) {
     state.session.authenticated = false;
-    if (state.cleanup) state.cleanup();
+    runCleanups();
     renderLogin('Your session ended. Please sign in again.');
   }
 });

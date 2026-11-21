@@ -626,3 +626,82 @@ async def test_every_unknown_tag_behaviour_reads_the_same_state(unknown):
     finally:
         await t.stop()
         sim.stop()
+
+
+def test_virtual_interface_names():
+    from switchyard.nsdp.netif import is_virtual
+
+    for name in (
+        "docker0",
+        "br-e6d349daa005",
+        "veth12ab",
+        "virbr0",
+        "cni0",
+        "flannel.1",
+        "podman1",
+    ):
+        assert is_virtual(name), name
+    for name in ("eth0", "ens18", "enp3s0", "wlan0", "bond0", "br0", "lo"):
+        assert not is_virtual(name), name
+
+
+async def test_virtual_interfaces_are_skipped_unless_listed():
+    from switchyard.nsdp.netif import Interface
+
+    ifaces = [
+        Interface("ens18", "127.0.0.1", bytes(6), "255.0.0.0"),
+        Interface("docker0", "127.0.0.2", bytes(6), "255.255.0.0"),
+        Interface("br-e6d349daa005", "127.0.0.3", bytes(6), "255.255.0.0"),
+    ]
+    t = Transport(client_port=0, enumerate_interfaces=lambda: ifaces)
+    await t.start()
+    try:
+        assert [r.name for r in t.routes] == ["ens18"]
+        assert str(t.routes[0].network) == "127.0.0.0/8"
+    finally:
+        await t.stop()
+    t = Transport(client_port=0, interfaces=["docker0"], enumerate_interfaces=lambda: ifaces)
+    await t.start()
+    try:
+        assert [r.name for r in t.routes] == ["docker0"]  # explicitly listed: used
+    finally:
+        await t.stop()
+
+
+async def test_requests_go_to_the_interface_the_switch_answered_on():
+    from switchyard.nsdp.netif import Interface
+
+    ifaces = [
+        Interface("lan", "127.0.0.1", bytes(6), "255.255.255.0"),
+        Interface("iot", "127.0.1.1", bytes(6), "255.255.255.0"),
+    ]
+    t = Transport(client_port=0, enumerate_interfaces=lambda: ifaces, timeout=0.05, retries=1)
+    await t.start()
+    try:
+        sent: dict[str, int] = {"lan": 0, "iot": 0}
+        for route in t.routes:
+            route.transport.sendto = lambda raw, dest, n=route.name: sent.__setitem__(
+                n, sent[n] + 1
+            )
+        mac = parse_mac(MAC)
+        t._send(Packet(Op.READ_REQUEST, device_mac=mac, seq=1), None)
+        assert sent == {"lan": 1, "iot": 1}  # unknown switch: every interface
+        reply = Packet(Op.READ_RESPONSE, device_mac=mac, seq=77).encode()
+        t._waiters[77] = lambda p, a: None
+        t._received(reply, ("127.0.1.20", 63322), "any")  # answers from the iot subnet
+        assert t.home[mac] == "iot"
+        t._send(Packet(Op.READ_REQUEST, device_mac=mac, seq=2), None)
+        assert sent == {"lan": 1, "iot": 2}  # only where it lives
+        with pytest.raises(TimeoutError):  # no answer: the retry goes out everywhere again
+            await t.request(Op.READ_REQUEST, mac, [(1, b"")])
+        assert sent == {"lan": 2, "iot": 4}
+        t._received(
+            Packet(Op.READ_RESPONSE, device_mac=bytes(6), seq=77).encode(), ("bogus", 1), "any"
+        )
+        t._received(
+            Packet(Op.READ_RESPONSE, device_mac=bytes(6), seq=77).encode(), ("10.9.9.9", 1), "any"
+        )
+        assert bytes(6) not in t.home  # outside every subnet: nothing learned
+    finally:
+        del t._waiters[77]
+        await t.stop()

@@ -14,6 +14,10 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
   new `switchyard reset-password` (#48).
 
 ### Fixed
+- 'Copy for bug report' works on plain HTTP (no clipboard API there): copy fallback, else a dialog with the text and a download; the protocol log page is titled 'Protocol log' (#56).
+- Requests are no longer broadcast on Docker, Podman, libvirt and Kubernetes bridges, and go only out of the interface a switch answered on (#57).
+- Phone layout: statistics as one row per port; QoS and speed/flow control with port chips and one editor for the selected ports (#58).
+- Background refreshes of a page are all stopped when leaving it (only the last one was).
 - MQTT: the 'offline' status could be lost on shutdown, so Home Assistant kept showing Switchyard as online.
 - Phone layout: no sideways scrolling; section drop-down instead of the tab strip, one block per port in tables, VLAN and LAG matrices with ports as rows (#55).
 - GS108E v1 firmware that answers an empty reply when a read contains an unknown setting: identity, mirroring and IGMP were missing (#53).

@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -633,5 +634,69 @@ def test_phone_layout_needs_no_sideways_scrolling(app):
         assert wide[0] <= wide[1] + 1 and all(x <= 1 for x in wide[2:]), (tab, wide)
     # the statistics become one block per port, each value with its label
     open_tab(app, "ports")
-    assert app.locator('[data-testid="stat-1"] td[data-label="Received"]').count() == 1
-    assert app.locator("table.stack thead").first.is_hidden()
+    expect(app.get_by_test_id("stats-list")).to_be_visible()
+
+
+def test_copy_for_bug_report_without_https(app):
+    """On plain HTTP there is no clipboard API: fall back to execCommand, then to a dialog."""
+    add_switch(app, MAC, "password")
+    app.add_init_script("Object.defineProperty(window, 'isSecureContext', { value: false });")
+    app.goto(app.server.url + "/#/log")
+    app.reload()
+    expect(app.locator("h1")).to_have_text("Protocol log")
+    expect(app.get_by_test_id("log-row").first).to_be_visible()
+    # execCommand works: copied silently
+    app.evaluate("document.execCommand = () => true")
+    app.get_by_test_id("log-copy").click()
+    expect(app.locator(".toast").last).to_contain_text("Copied")
+    # execCommand refused too: the text is shown to select, with a download
+    app.evaluate("document.execCommand = () => false")
+    app.get_by_test_id("log-copy").click()
+    expect(app.get_by_role("dialog")).to_contain_text("Copy this text")
+    text = app.get_by_test_id("copy-text").input_value()
+    assert "read_request" in text or "read_response" in text
+    with app.expect_download() as dl:
+        app.get_by_test_id("copy-download").click()
+    assert dl.value.suggested_filename == "switchyard-protocol-log.txt"
+
+
+def test_phone_port_lists_and_chip_editor(app):
+    add_switch(app, MAC, "password")
+    app.set_viewport_size({"width": 390, "height": 844})
+    open_tab(app, "ports")
+    expect(app.get_by_test_id("stats-list")).to_be_visible()
+    expect(app.get_by_test_id("stat-1")).to_contain_text("1G full")
+    expect(app.get_by_test_id("stat-3")).to_contain_text("down")
+    # QoS: select ports 2 and 4, set one egress limit for both
+    open_tab(app, "qos")
+    app.get_by_test_id("qos-mode").select_option("port")
+    app.get_by_test_id("chip-2").click()
+    app.get_by_test_id("chip-4").click()
+    app.get_by_test_id("chip-1").click()  # deselect port 1
+    expect(app.get_by_test_id("chip-form")).to_contain_text("Ports 2, 4")
+    app.get_by_test_id("edit-egress").select_option("7")
+    app.get_by_test_id("edit-prio").select_option("high")
+    expect(app.get_by_test_id("chip-summary")).to_contain_text(
+        "Port 2: Priority High, out 32 Mbit/s"
+    )
+    expect(app.get_by_test_id("chip-4")).to_have_class(re.compile("changed"))
+    app.get_by_test_id("qos-save").click()
+    app.get_by_test_id("confirm-ok").click()
+    expect(app.locator(".toast").last).to_contain_text("QoS settings saved")
+    q = api(app, "GET", f"/devices/{MAC}/state").json()["qos"]
+    assert q["egress"]["2"] == 7 and q["egress"]["4"] == 7 and q["egress"]["1"] == 0
+    assert q["priorities"]["2"] == "high" and q["priorities"]["1"] == "normal"
+    # speed and flow control with the same editor
+    open_tab(app, "ports-config")
+    app.get_by_test_id("chip-3").click()
+    app.get_by_test_id("chip-1").click()
+    app.get_by_test_id("edit-speed").select_option("5")
+    app.get_by_test_id("edit-flow").check()
+    app.get_by_test_id("port-settings-save").click()
+    expect(app.locator(".toast").last).to_contain_text("Port settings saved")
+    admin = api(app, "GET", f"/devices/{MAC}/state").json()["port_admin"]
+    assert admin["3"]["speed"] == "100M full" and admin["3"]["flow_control"] is True
+    assert admin["1"]["speed"] == "auto"
+    # back to desktop width: the table returns
+    app.set_viewport_size({"width": 1280, "height": 900})
+    expect(app.get_by_test_id("speed-1")).to_be_visible()

@@ -17,7 +17,7 @@ The data folder is `/data` in the container, `./data` otherwise, or `--data DIR`
 | `auth.disabled` | `SWITCHYARD_AUTH_DISABLED` | `false` | true = no login at all. Only for trusted networks or behind a proxy that authenticates. |
 | `auth.viewer_password` | `SWITCHYARD_AUTH_VIEWER_PASSWORD` | `""` | Optional second password for a read-only login: it can see everything but change nothing. |
 | `auth.session_hours` | `SWITCHYARD_AUTH_SESSION_HOURS` | `24` | How long a login stays valid. |
-| `nsdp.interfaces` | `SWITCHYARD_NSDP_INTERFACES` | `[]` | Network interfaces to search for switches, e.g. ["eth0"]. Empty: all. |
+| `nsdp.interfaces` | `SWITCHYARD_NSDP_INTERFACES` | `[]` | Network interfaces to search for switches, e.g. ["eth0"]. Empty: all except the bridges of Docker, Podman, libvirt and Kubernetes (docker0, br-..., veth..., virbr...). |
 | `nsdp.targets` | `SWITCHYARD_NSDP_TARGETS` | `[]` | Send to these addresses instead of broadcasting, e.g. ["192.168.5.255", "10.0.0.7:63322"]. For routed networks. |
 | `nsdp.client_port` | `SWITCHYARD_NSDP_CLIENT_PORT` | `63321` | UDP port this side uses (the protocol expects 63321). |
 | `nsdp.device_port` | `SWITCHYARD_NSDP_DEVICE_PORT` | `63322` | UDP port the switches listen on. |

@@ -55,6 +55,11 @@ export async function renderDetail(main, ctx, route) {
     return;
   }
   S.retitle = title;
+  // phone and desktop use different layouts for some sections: redraw when the width changes
+  const mq = window.matchMedia('(max-width: 640px)');
+  const onWidth = () => S.show();
+  mq.addEventListener('change', onWidth);
+  ctx.onCleanup(() => mq.removeEventListener('change', onWidth));
   await S.show();
 }
 

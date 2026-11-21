@@ -69,8 +69,11 @@ for your browsers.
 
 ## Several networks
 
-By default Switchyard searches every interface that is up and has an IPv4 address. Limit it with
-`nsdp.interfaces`. For switches on other subnets list directed broadcast or unicast addresses in
+By default Switchyard searches every interface that is up and has an IPv4 address, except the
+bridges of Docker, Podman, libvirt and Kubernetes (`docker0`, `br-...`, `veth...`, `virbr...`).
+Once a switch has answered, further requests for it go only out of the interface whose subnet
+holds its address. Limit the search with `nsdp.interfaces`; interfaces listed there are used even
+if they look virtual. For switches on other subnets list directed broadcast or unicast addresses in
 `nsdp.targets`, or add them by IP address in the UI (*Switches*, *Add by IP address*).
 Switchyard sends to that address directly; the operating system chooses the source address by
 route, so the switch can answer through the gateway. Some firmware answers every request by

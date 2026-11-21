@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import logging
 import socket
 import time
@@ -18,7 +19,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .netif import Interface, list_interfaces
+from .netif import Interface, is_virtual, list_interfaces
 from .packet import BROADCAST_MAC, Op, Packet, PacketError, format_mac
 from .tags import NAMES
 
@@ -37,6 +38,7 @@ class Route:
     transport: asyncio.DatagramTransport
     mac: bytes
     broadcast: tuple[str, int]
+    network: ipaddress.IPv4Network | None = None
 
 
 class _Protocol(asyncio.DatagramProtocol):
@@ -99,6 +101,7 @@ class Transport:
         self._seq = int(time.time() * 1000) & 0xFFFF
         self._waiters: dict[int, Callable[[Packet, tuple], None]] = {}
         self.packet_log: deque[dict] = deque(maxlen=log_size)
+        self.home: dict[bytes, str] = {}  # switch MAC -> interface it answered on
         self._log_id = 0
 
     # -- lifecycle -----------------------------------------------------------
@@ -117,8 +120,12 @@ class Transport:
                 dest = (host, int(port) if port else self.device_port)
                 self.routes.append(Route(target, listener, BROADCAST_MAC, dest))
             return
+        skipped = []
         for iface in self._enumerate():
             if self.interface_filter and iface.name not in self.interface_filter:
+                continue
+            if not self.interface_filter and is_virtual(iface.name):
+                skipped.append(iface.name)
                 continue
             try:
                 sock = _socket(iface.ip, self.client_port)
@@ -128,8 +135,17 @@ class Transport:
             transport, _ = await loop.create_datagram_endpoint(
                 lambda n=iface.name: _Protocol(self, n), sock=sock
             )
+            network = None
+            if iface.netmask:
+                network = ipaddress.IPv4Interface(f"{iface.ip}/{iface.netmask}").network
             self.routes.append(
-                Route(iface.name, transport, iface.mac, (BROADCAST, self.device_port))
+                Route(iface.name, transport, iface.mac, (BROADCAST, self.device_port), network)
+            )
+        if skipped:
+            log.info(
+                "skipping %d virtual interfaces (%s); list them in nsdp.interfaces to use them",
+                len(skipped),
+                ", ".join(skipped[:5]) + (" ..." if len(skipped) > 5 else ""),
             )
         if not self.routes:
             log.warning("no usable network interface found, using the default route only")
@@ -185,7 +201,19 @@ class Transport:
         if waiter is None:
             return
         self._record("rx", packet, data, f"{addr[0]}:{addr[1]}")
+        self._learn(packet.device_mac, addr[0])
         waiter(packet, addr)
+
+    def _learn(self, mac: bytes, source: str) -> None:
+        """Remember the interface whose subnet holds the switch's address."""
+        try:
+            ip = ipaddress.IPv4Address(source)
+        except ValueError:
+            return
+        for route in self.routes:
+            if route.network is not None and ip in route.network:
+                self.home[mac] = route.name
+                return
 
     # -- requests ------------------------------------------------------------
 
@@ -193,7 +221,7 @@ class Transport:
         self._seq = (self._seq + 1) & 0xFFFF
         return self._seq
 
-    def _send(self, packet: Packet, address: str | None) -> None:
+    def _send(self, packet: Packet, address: str | None, everywhere: bool = False) -> None:
         if not self.routes:
             raise RuntimeError("transport is not started")
         if address and not self.targets and self._listener is not None:
@@ -209,7 +237,11 @@ class Transport:
                 return
             self._record("tx", packet, raw, f"{dest[0]}:{dest[1]}")
             return
-        for route in self.routes:
+        routes = self.routes
+        home = self.home.get(packet.device_mac)
+        if home and not everywhere:  # the switch answered there before: ask only there
+            routes = [r for r in self.routes if r.name == home] or self.routes
+        for route in routes:
             packet.host_mac = route.mac
             dest = route.broadcast
             raw = packet.encode()
@@ -271,8 +303,8 @@ class Transport:
         self._waiters[seq] = on_reply
         try:
             packet = Packet(op, device_mac=device_mac, seq=seq, tlvs=tlvs)
-            for _ in range(retries + 1):
-                self._send(packet, address)
+            for attempt in range(retries + 1):
+                self._send(packet, address, everywhere=attempt > 0)
                 with contextlib.suppress(TimeoutError):
                     return await asyncio.wait_for(asyncio.shield(future), timeout)
         finally:
