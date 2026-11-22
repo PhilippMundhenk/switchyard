@@ -116,7 +116,7 @@ def test_tplink_switch_asks_for_user_and_password(app):
     assert m["ingress"] == [] and m["egress"] == [2]
     open_tab(app, "vlan", tp)
     options = app.get_by_test_id("vlan-mode").locator("option").all_inner_texts()
-    assert options == ["Disabled", "Port-based", "802.1Q"]
+    assert options == ["Disabled", "Port-based", "802.1Q", "MTU VLAN"]
     # storm control frame types (#88)
     open_tab(app, "qos", tp)
     expect(app.get_by_test_id("storm-types")).to_contain_text("multicast")
