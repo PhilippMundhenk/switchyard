@@ -17,6 +17,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - Switch protocols sit behind one driver interface; NETGEAR NSDP is the first driver. Stored switches remember their protocol, the search asks every protocol, and a setting a switch does not have is answered with a clear 'not supported' (#62).
 
 ### Documentation
+- Networking in DEPLOYMENT.md: host, bridged and macvlan compared, how to check a bridged setup, and each behind Traefik (host.docker.internal, health check, trusted proxy subnets, keeping the port away from the LAN); `server.forwarded_allow_ips` takes subnets (#69).
 - A bridged Docker network with a published port works for switches added by IP address; host networking is only needed for the search (#61).
 
 ### Fixed

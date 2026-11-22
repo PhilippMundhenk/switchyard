@@ -12,7 +12,7 @@ The data folder is `/data` in the container, `./data` otherwise, or `--data DIR`
 | `server.host` | `SWITCHYARD_SERVER_HOST` | `"0.0.0.0"` | Address the web interface listens on. |
 | `server.port` | `SWITCHYARD_SERVER_PORT` | `8080` | Port of the web interface. |
 | `server.allowed_hosts` | `SWITCHYARD_SERVER_ALLOWED_HOSTS` | `[]` | Host names the web interface may be reached by, e.g. ["switchyard.lan"]. IP addresses and localhost always work. Empty: any name while a password is required; only IP addresses and localhost when auth.disabled is true (protection against DNS rebinding). |
-| `server.forwarded_allow_ips` | `SWITCHYARD_SERVER_FORWARDED_ALLOW_IPS` | `"127.0.0.1"` | Addresses of reverse proxies whose X-Forwarded-* headers are trusted (comma separated, or * for all). Needed for the secure cookie flag behind a TLS proxy. |
+| `server.forwarded_allow_ips` | `SWITCHYARD_SERVER_FORWARDED_ALLOW_IPS` | `"127.0.0.1"` | Addresses or subnets of reverse proxies whose X-Forwarded-* headers are trusted (comma separated, e.g. 172.18.0.0/16, or * for all). Needed for the secure cookie flag behind a TLS proxy. |
 | `auth.password` | `SWITCHYARD_AUTH_PASSWORD` | `""` | Password for the web interface. Empty: a random one is generated on first start, printed once to the log and stored hashed in the data folder. |
 | `auth.disabled` | `SWITCHYARD_AUTH_DISABLED` | `false` | true = no login at all. Only for trusted networks or behind a proxy that authenticates. |
 | `auth.viewer_password` | `SWITCHYARD_AUTH_VIEWER_PASSWORD` | `""` | Optional second password for a read-only login: it can see everything but change nothing. |

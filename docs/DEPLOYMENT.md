@@ -2,27 +2,51 @@
 
 ## Docker
 
-Host networking is only needed for *Search network*. The search is a UDP broadcast on the
-switches' network, and a container on a Docker bridge network neither sends into that network nor
-receives the answers. Everything else talks to one switch at a time, by unicast to its address.
-
-**Host networking (recommended).** Everything works, including the search. This is the compose
-file in the repository root:
-
 ```sh
 docker compose up -d
 docker compose logs switchyard | grep -i password   # generated password, first start only
 ```
 
-With host networking `ports:` is ignored; change the web port with `SWITCHYARD_SERVER_PORT`.
+The container runs as user 10001, so a bind-mounted `./data` folder has to belong to that user
+before the first start: `mkdir -p data && sudo chown 10001:10001 data` (other options under
+[Data folder](#data-folder)).
 
-Either way, the container runs as user 10001, so a bind-mounted `./data` folder has to belong to
-that user before the first start: `mkdir -p data && sudo chown 10001:10001 data` (other options
-under [Data folder](#data-folder)).
+### Networking: which setup?
 
-**Bridged network with a published port.** If you would rather not use host networking, publish
-the web port and add every switch with *Add by IP address* (or list the switch addresses in
-`SWITCHYARD_NSDP_TARGETS`). The search finds nothing this way.
+Switchyard talks to the switches over UDP. How the container is attached to the network decides
+what works:
+
+| | Host networking | Bridged, published port | macvlan |
+| --- | --- | --- | --- |
+| *Search network* (broadcast) | yes | no | yes |
+| NETGEAR switch added by IP address | yes | only if the switch answers to the sender | yes |
+| NETGEAR switch that answers by broadcast | yes | no | yes |
+| TP-Link Easy Smart (answers by broadcast) | yes | no | yes |
+| Firmware upgrade (TFTP) | yes | no (Docker drops the TFTP answers) | yes |
+| Separation from the host | none: shares the host's network | full | own LAN address |
+| Effort | lowest | low | a network definition |
+
+**Use host networking unless you have a reason not to.** Bridged works only for some NETGEAR
+switches; macvlan is the way to keep the container separate and still have everything.
+
+### Host networking
+
+This is the compose file in the repository root (`network_mode: host`).
+
+- `ports:` and `expose:` have no effect. The web port is `SWITCHYARD_SERVER_PORT` (default 8080),
+  opened directly on the host. Pick a free one: the container runs as a normal user and cannot
+  open ports below 1024, and port 80/443 usually belong to a reverse proxy anyway.
+- The port listens on every interface of the host unless `SWITCHYARD_SERVER_HOST` names one
+  address. Behind a reverse proxy, see [Behind Traefik](#behind-traefik) for how to keep the port
+  away from the rest of the network.
+- Switchyard searches every interface except Docker's, Podman's, libvirt's and Kubernetes'
+  bridges. The log says which ones it uses (`NSDP on UDP 63321 via [...]`); narrow it with
+  `SWITCHYARD_NSDP_INTERFACES`.
+- The container shares the host's network: it sees all interfaces and can reach services that
+  listen only on the host's `localhost`. This is the price for broadcasts; it runs as an
+  unprivileged user.
+
+### Bridged network with a published port
 
 ```yaml
 services:
@@ -35,12 +59,68 @@ services:
       - ./data:/data
 ```
 
-Docker translates the container's requests to the host's address and passes the switch's answers
-back, as long as the switch answers to the sender. Firmware that answers every request by
-broadcast (see [Several networks](#several-networks)) cannot be managed from a bridged container.
-Not verified this way: firmware upgrades. The switch's TFTP server answers from a new port, which
-Docker's address translation usually drops; use host networking for an upgrade. Reports from
-real switches on a bridged network are welcome.
+The search finds nothing here: its broadcast stays inside the Docker network. Add every switch
+with *Add by IP address*, or list the addresses in `SWITCHYARD_NSDP_TARGETS`. Docker translates
+the container's requests to the host's address and passes the answers back, **as long as the switch
+answers to the address that asked**. Some NETGEAR firmware answers every request by broadcast, and
+a broadcast never reaches a bridged container, whatever ports you publish. A GS108E v1 with
+firmware 1.00.09 gave no answers in a bridged container. TP-Link Easy Smart switches always answer
+by broadcast and cannot be used this way.
+
+Switches added while Switchyard ran with host networking have no stored address: set it under the
+switch, *Maintenance*, *This entry*, *Fixed address* (shown also when the switch does not answer).
+The switch card then shows `unicast <address>`.
+
+**Checking whether a switch works bridged.** Open the switch once, then:
+
+1. *Protocol log*: `tx ... 192.168.1.20:63322` lines mean the requests go out to the switch's
+   address. `rx` lines from it mean it works. No `tx` to its address: the fixed address is not
+   set.
+2. Requests but no `rx`: on the Docker host, watch the traffic while you open the switch page:
+   ```sh
+   sudo tcpdump -ni any 'udp port 63321 or udp port 63322'
+   ```
+   - answers to `255.255.255.255.63321` or the subnet's broadcast: the switch answers by
+     broadcast. Use host networking or macvlan.
+   - no answer at all: a firewall or route between the container's network and the switches
+     blocks the requests, or the switch ignores them.
+   - answers to the host's address that still do not show up in the protocol log: something on
+     the host drops them; please report it.
+
+### macvlan: an own address on the switches' network
+
+A macvlan network gives the container its own address on the LAN, so broadcasts, the search and
+firmware upgrades work without host networking. A second, normal network keeps it reachable for
+a reverse proxy:
+
+```yaml
+networks:
+  proxy:
+    external: true            # the network your reverse proxy is on
+  lan:
+    driver: macvlan
+    driver_opts:
+      parent: eth0            # the host's LAN interface
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+          gateway: 192.168.1.1
+          ip_range: 192.168.1.240/29   # addresses your DHCP server does not hand out
+
+services:
+  switchyard:
+    image: ghcr.io/philippmundhenk/switchyard:latest
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    networks:
+      proxy: {}
+      lan: {}
+```
+
+The host itself cannot talk to a macvlan address (other machines and other containers can).
+Limit the search to the LAN side with `SWITCHYARD_NSDP_INTERFACES` if it picks the wrong
+interface; the log shows the interfaces in use.
 
 ## Data folder
 
@@ -139,5 +219,98 @@ location / {
 ```
 
 The proxy must be listed in `server.forwarded_allow_ips` (default `127.0.0.1`), otherwise the
-forwarded scheme is ignored and the session cookie lacks the `Secure` flag. Traefik: the same
-headers are sent by default.
+forwarded scheme is ignored and the session cookie lacks the `Secure` flag. Subnets work too,
+e.g. `172.18.0.0/16`.
+### Behind Traefik
+
+Traefik sends the forwarded headers by default. Which labels it needs depends on the networking
+setup above.
+
+**Bridged or macvlan.** Put Switchyard on Traefik's network and route to its port:
+
+```yaml
+services:
+  switchyard:
+    image: ghcr.io/philippmundhenk/switchyard:latest
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy     # needed when the container has several networks
+      - traefik.http.routers.switchyard.rule=Host(`switchyard.example.com`)
+      - traefik.http.routers.switchyard.entrypoints=https
+      - traefik.http.routers.switchyard.tls.certresolver=letsencrypt
+      - traefik.http.services.switchyard.loadbalancer.server.port=8080
+    environment:
+      SWITCHYARD_SERVER_FORWARDED_ALLOW_IPS: "172.18.0.0/16"   # the subnet of the proxy network
+```
+
+**Host networking.** Traefik cannot reach the container over a Docker network, so it goes to the
+host instead:
+
+1. Traefik's own service needs a name for the host. This is a Compose option, next to
+   `command:`, whatever way Traefik itself is configured:
+   ```yaml
+   services:
+     traefik:
+       extra_hosts:
+         - "host.docker.internal:host-gateway"
+   ```
+   For containers with host networking Traefik connects to `host.docker.internal` (without the
+   entry it falls back to 127.0.0.1, which is Traefik itself). Check with
+   `docker exec traefik getent hosts host.docker.internal`. The entry only names an address
+   Traefik could already reach; it opens nothing new.
+2. Switchyard listens on a free port of the host, and the label says which:
+   ```yaml
+   services:
+     switchyard:
+       image: ghcr.io/philippmundhenk/switchyard:latest
+       network_mode: host
+       restart: unless-stopped
+       volumes:
+         - ./data:/data
+       labels:
+         - traefik.enable=true
+         - traefik.http.routers.switchyard.rule=Host(`switchyard.example.com`)
+         - traefik.http.routers.switchyard.entrypoints=https
+         - traefik.http.routers.switchyard.tls.certresolver=letsencrypt
+         - traefik.http.services.switchyard.loadbalancer.server.port=7432
+       environment:
+         SWITCHYARD_SERVER_PORT: "7432"
+         SWITCHYARD_SERVER_FORWARDED_ALLOW_IPS: "172.18.0.0/16"   # Traefik's network
+   ```
+   Not port 80: that is Traefik's, and the container may not open ports below 1024. No
+   `networks:` and no `expose:`.
+3. Traefik's requests still come from its container address (Docker translates addresses only
+   for traffic leaving the host), so trust the subnet of Traefik's network. The access log shows
+   which address Switchyard sees: `INFO: 172.18.0.5:41234 - "GET / ..."`. Subnets work in
+   `server.forwarded_allow_ips`; a single address breaks when Traefik gets a new one, unless you
+   pin it with `ipv4_address`.
+4. Keep the port away from the rest of the network. With host networking it is open on every
+   interface of the host, and whoever reaches it directly skips Traefik and any authentication
+   middleware in front (Switchyard's own login still applies; keep it on). Either
+   - allow only Traefik's network in the host firewall:
+     ```sh
+     iptables -I INPUT -p tcp --dport 7432 ! -s 172.18.0.0/16 -j DROP
+     ```
+     (make it permanent the way your host keeps its firewall rules), or
+   - let Switchyard listen on the Docker gateway only: `SWITCHYARD_SERVER_HOST: "172.17.0.1"`,
+     the address `host.docker.internal` resolves to. The LAN cannot reach it then; Switchyard
+     does not start if that address does not exist yet when it starts.
+
+   Trusting a whole subnet means any container in it that reaches the port could fake its client
+   address (used for the audit log and the per-client login lockout); the firewall rule or the
+   gateway address prevents that too.
+
+**When Traefik answers 404**, it has no route to Switchyard:
+
+| Cause | Check |
+| --- | --- |
+| The container is not healthy yet, or unhealthy: Traefik ignores such containers | `docker ps` shows `(healthy)`. Older images checked 127.0.0.1 even with `SWITCHYARD_SERVER_HOST` set; update, or override `healthcheck:` with the right address |
+| Host networking without `host.docker.internal` in Traefik | `docker exec traefik getent hosts host.docker.internal` |
+| Wrong port in `loadbalancer.server.port` | it must match `SWITCHYARD_SERVER_PORT` |
+| Several networks without `traefik.docker.network` | Traefik picks the wrong one |
+| Host firewall blocks Traefik | the rule above allows Traefik's network |
