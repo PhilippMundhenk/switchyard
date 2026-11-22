@@ -46,6 +46,9 @@ ERRORS = {
 }
 AUTH_ERRORS = {7, 8}
 KEY_ACCEPTED = 4098
+# A change is never resent (it could be applied twice), so wait long for its answer: some
+# changes take the switch seconds (a VLAN mode switch rewrites the table) (#83).
+WRITE_TIMEOUT = 5.0
 DEFAULT_USER = "admin"
 
 
@@ -206,7 +209,13 @@ class EasySmartClient(SwitchDriver):
         await self._session()
         token = await self._token()
         credentials = [(T.USERNAME, T.cstr(self.username)), (T.PASSWORD, T.cstr(password))]
-        reply = await self._exchange(Op.LOGIN, credentials + tlvs, token, retries=0)
+        reply = await self._exchange(
+            Op.LOGIN,
+            credentials + tlvs,
+            token,
+            retries=0,
+            timeout=max(self.transport.timeout, WRITE_TIMEOUT),
+        )
         if reply.error in AUTH_ERRORS:
             raise EasySmartAuthError(reply.error)
         if reply.error:
@@ -338,7 +347,15 @@ class EasySmartClient(SwitchDriver):
         port_based = await self._read(T.PORT_VLAN_ENABLED)
         if dot1q is None and port_based is None:
             return None
-        out = {"mode": "disabled", "max_vlans": None, "port_vlans": [], "dot1q": [], "pvid": {}}
+        out = {
+            "mode": "disabled",
+            "max_vlans": None,
+            "port_vlans": [],
+            "dot1q": [],
+            "pvid": {},
+            # one port-based and one 802.1Q mode (no basic/advanced as on NETGEAR)
+            "modes": ["disabled", "port_basic", "dot1q_advanced"],
+        }
         if dot1q is not None and (dot1q.first(T.DOT1Q_ENABLED) or b"\x00")[:1] == b"\x01":
             out["mode"] = "dot1q_advanced"
             vlans = await self._get(T.DOT1Q_VLAN)
@@ -650,7 +667,19 @@ class EasySmartClient(SwitchDriver):
         async with self.lock:
             await self._save()
 
-    async def set_mirror(self, destination: int, sources: list[int]) -> None:
+    async def set_mirror(
+        self,
+        destination: int,
+        sources: list[int],
+        ingress: list[int] | None = None,
+        egress: list[int] | None = None,
+    ) -> None:
+        """Mirror ``sources`` both ways, or received (ingress) and sent (egress) traffic apart."""
+        if ingress is not None or egress is not None:
+            ingress, egress = sorted(set(ingress or [])), sorted(set(egress or []))
+            sources = sorted(set(ingress) | set(egress))
+        else:
+            ingress = egress = sources
         count = await self._port_count()
         if destination > count:
             raise ValueError(f"The destination port must be 1 to {count}.")
@@ -658,7 +687,9 @@ class EasySmartClient(SwitchDriver):
             raise ValueError("The destination port cannot be a source port.")
         if destination and not sources:
             raise ValueError("Select at least one source port.")
-        await self.write([(T.MIRROR, T.pack_mirror(destination, sources, sources))])
+        if any(not 1 <= p <= count for p in sources):
+            raise ValueError(f"Source ports must be 1 to {count}.")
+        await self.write([(T.MIRROR, T.pack_mirror(destination, ingress, egress))])
 
     async def set_igmp(
         self,

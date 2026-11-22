@@ -265,7 +265,11 @@ async function vlan(host, S) {
   const apply = applier(S);
   const n = S.state.info.ports;
   const allPorts = Array.from({ length: n }, (_, i) => i + 1);
-  const modeSel = select(Object.entries(MODE_LABELS), v.mode, { 'aria-label': 'VLAN mode', 'data-testid': 'vlan-mode' });
+  // TP-Link has one port-based and one 802.1Q mode, without basic/advanced
+  const modes = v.modes || Object.keys(MODE_LABELS);
+  const short = !modes.includes('dot1q_basic');
+  const label = (m) => (short ? { port_basic: 'Port-based', dot1q_advanced: '802.1Q' }[m] : null) || MODE_LABELS[m] || m;
+  const modeSel = select(modes.map((m) => [m, label(m)]), v.mode, { 'aria-label': 'VLAN mode', 'data-testid': 'vlan-mode' });
   const modeBtn = h('button', { class: 'btn', 'data-testid': 'vlan-mode-apply' }, 'Change mode');
   modeBtn.addEventListener('click', async () => {
     if (modeSel.value === v.mode) return;
@@ -429,17 +433,32 @@ async function features(host, S) {
   if (!m) host.append(section('Port mirroring', unsupported('Port mirroring')));
   else {
     const dest = select([[0, 'Off'], ...allPorts.map((p) => [p, `Port ${p}`])], m.destination, { 'data-testid': 'mirror-dest' });
+    // switches that report directions (TP-Link) mirror received and sent traffic separately
+    const directional = Array.isArray(m.ingress);
+    const dirOf = (p) => {
+      const rx = (m.ingress || []).includes(p) && m.destination;
+      const tx = (m.egress || []).includes(p) && m.destination;
+      return rx && tx ? 'both' : rx ? 'rx' : tx ? 'tx' : 'none';
+    };
     const boxes = allPorts.map((p) => h('input', { type: 'checkbox', checked: m.sources.includes(p), 'data-testid': `mirror-src-${p}` }));
+    const dirs = allPorts.map((p) => select([['none', 'not mirrored'], ['both', 'received and sent'], ['rx', 'received only'], ['tx', 'sent only']], dirOf(p), { 'aria-label': `Port ${p}`, 'data-testid': `mirror-dir-${p}` }));
     const save = h('button', { class: 'btn primary', 'data-testid': 'mirror-save' }, 'Apply');
     save.addEventListener('click', () => {
-      const sources = allPorts.filter((p, i) => boxes[i].checked);
       const d = Number(dest.value);
-      if (d && sources.includes(d)) return toast('The destination port cannot also be a source port.', 'error');
-      if (d && !sources.length) return toast('Select at least one source port.', 'error');
-      return apply(save, () => put(`${dev(S.mac)}/mirror`, { destination: d, sources: d ? sources : [] }), 'Mirroring saved.');
+      const body = { destination: d, sources: [] };
+      if (directional) {
+        body.ingress = d ? allPorts.filter((p, i) => ['both', 'rx'].includes(dirs[i].value)) : [];
+        body.egress = d ? allPorts.filter((p, i) => ['both', 'tx'].includes(dirs[i].value)) : [];
+        body.sources = [...new Set([...body.ingress, ...body.egress])];
+      } else body.sources = d ? allPorts.filter((p, i) => boxes[i].checked) : [];
+      if (d && body.sources.includes(d)) return toast('The destination port cannot also be a source port.', 'error');
+      if (d && !body.sources.length) return toast('Select at least one source port.', 'error');
+      return apply(save, () => put(`${dev(S.mac)}/mirror`, body), 'Mirroring saved.');
     });
-    host.append(section('Port mirroring', field('Destination port', dest, 'Copies of the traffic of the source ports are sent here.'),
-      h('div', { class: 'checks' }, ...allPorts.map((p, i) => h('label', {}, boxes[i], `Port ${p}`))), h('p', {}, save)));
+    const choices = directional
+      ? h('div', { class: 'grid' }, ...allPorts.map((p, i) => field(`Port ${p}`, dirs[i])))
+      : h('div', { class: 'checks' }, ...allPorts.map((p, i) => h('label', {}, boxes[i], `Port ${p}`)));
+    host.append(section('Port mirroring', field('Destination port', dest, 'Copies of the traffic of the source ports are sent here.'), choices, h('p', {}, save)));
   }
 
   const g = S.state.igmp;

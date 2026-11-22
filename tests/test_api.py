@@ -875,3 +875,8 @@ def test_state_parts_reads_only_those_sections(client, office):
     assert "vlan" not in data and "ports" not in data and data["device"]["mac"] == mac
     r = client.get(f"/api/devices/{mac}/state?parts=nonsense")
     assert r.status_code == 422 and "choose from" in r.json()["message"]
+
+
+def test_netgear_mirrors_both_directions_only(client, office):
+    r = client.put(f"/api/devices/{office}/mirror", json={"destination": 8, "ingress": [1]})
+    assert r.status_code == 422 and "together" in r.json()["message"]

@@ -58,6 +58,11 @@ accepts the session key exchange (generation B), answers reads with token 0, but
 GET 2305, and silently drops a write that carries user name and password without a token.
 Switchyard therefore asks for a token before every write on generation B too, once with a short
 wait, and remembers whether the switch hands them out.
+The same switch sometimes answers a write only after more than 1.5 s (a VLAN mode switch, some
+loop prevention changes), although it applied it; Switchyard waits up to 5 s for the answer to a
+write and never resends one (#83). TP-Link uses the version 1.0.0 for several builds of this
+hardware (Build 20220930 on the download page, 20230218 on the tested unit): the build string,
+not the version, tells firmware apart.
 
 ## 2. Transport
 

@@ -122,6 +122,9 @@ class QosBody(BaseModel):
 class MirrorBody(BaseModel):
     destination: int = Field(ge=0)
     sources: list[int] = []
+    # TP-Link: mirror received (ingress) and sent (egress) traffic per port; replaces sources
+    ingress: list[int] | None = None
+    egress: list[int] | None = None
 
 
 class IgmpBody(BaseModel):
@@ -742,7 +745,10 @@ def create_app(config: Config) -> FastAPI:
 
     @api.put("/devices/{mac}/mirror")
     async def set_mirror(mac: str, body: MirrorBody):
-        await manager().client(mac).set_mirror(body.destination, body.sources)
+        directions = {
+            k: v for k, v in (("ingress", body.ingress), ("egress", body.egress)) if v is not None
+        }
+        await manager().client(mac).set_mirror(body.destination, body.sources, **directions)
         return ok("Mirroring saved.")
 
     @api.put("/devices/{mac}/igmp")
