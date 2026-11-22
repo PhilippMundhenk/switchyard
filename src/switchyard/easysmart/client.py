@@ -45,6 +45,10 @@ ERRORS = {
     7505: "The 802.1Q VLAN table is full.",
 }
 AUTH_ERRORS = {7, 8}
+# the same code means something else in the answer to a change
+WRITE_ERRORS = {
+    -2: "The switch refused this change; it may not support this combination of settings."
+}
 KEY_ACCEPTED = 4098
 # A change is never resent (it could be applied twice), so wait long for its answer: some
 # changes take the switch seconds (a VLAN mode switch rewrites the table) (#83).
@@ -53,10 +57,11 @@ DEFAULT_USER = "admin"
 
 
 class EasySmartError(SwitchError):
-    def __init__(self, code: int, tag: int = 0):
+    def __init__(self, code: int, tag: int = 0, write: bool = False):
         self.status = code
         self.tag = tag
-        super().__init__(ERRORS.get(code, f"The switch answered with error {code}."))
+        text = (WRITE_ERRORS.get(code) if write else None) or ERRORS.get(code)
+        super().__init__(text or f"The switch answered with error {code}.")
 
 
 class EasySmartAuthError(EasySmartError, AuthError):
@@ -219,7 +224,7 @@ class EasySmartClient(SwitchDriver):
         if reply.error in AUTH_ERRORS:
             raise EasySmartAuthError(reply.error)
         if reply.error:
-            raise EasySmartError(reply.error, tlvs[0][0] if tlvs else 0)
+            raise EasySmartError(reply.error, tlvs[0][0] if tlvs else 0, write=True)
         return reply
 
     async def _token(self) -> int:
@@ -444,7 +449,8 @@ class EasySmartClient(SwitchDriver):
         loop_value = loop.first(T.LOOP_PREVENTION) if loop else None
         led_value = led.first(T.LED) if led else None
         return {
-            "mirror": T.mirror(mirror_value, count)
+            # these switches mirror one source port (received, sent or both) (#86)
+            "mirror": {**T.mirror(mirror_value, count), "max_sources": 1}
             if mirror_value and len(mirror_value) >= 10
             else None,
             "igmp": None
@@ -691,6 +697,8 @@ class EasySmartClient(SwitchDriver):
             raise ValueError("Select at least one source port.")
         if any(not 1 <= p <= count for p in sources):
             raise ValueError(f"Source ports must be 1 to {count}.")
+        if len(sources) > 1:
+            raise ValueError("This switch mirrors one source port only.")
         await self.write([(T.MIRROR, T.pack_mirror(destination, ingress, egress))])
 
     async def set_igmp(

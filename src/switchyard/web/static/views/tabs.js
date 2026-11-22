@@ -455,7 +455,21 @@ async function features(host, S) {
       if (d && !body.sources.length) return toast('Select at least one source port.', 'error');
       return apply(save, () => put(`${dev(S.mac)}/mirror`, body), 'Mirroring saved.');
     });
-    const choices = directional
+    // one source port only (TP-Link): pick the port and its direction
+    const single = directional && m.max_sources === 1;
+    const current = allPorts.find((p) => dirOf(p) !== 'none') || 0;
+    const srcSel = select([[0, 'None'], ...allPorts.map((p) => [p, `Port ${p}`])], current, { 'data-testid': 'mirror-source' });
+    const dirSel = select([['both', 'received and sent'], ['rx', 'received only'], ['tx', 'sent only']], current ? dirOf(current) : 'both', { 'data-testid': 'mirror-direction' });
+    if (single) {
+      // the per-port selects drive the request below: keep them in step with the two choices
+      const syncSingle = () => allPorts.forEach((p, i) => { dirs[i].value = p === Number(srcSel.value) ? dirSel.value : 'none'; });
+      srcSel.addEventListener('change', syncSingle);
+      dirSel.addEventListener('change', syncSingle);
+      syncSingle();
+    }
+    const choices = single
+      ? h('div', { class: 'grid' }, field('Source port', srcSel, 'This switch mirrors one port.'), field('Traffic', dirSel))
+      : directional
       ? h('div', { class: 'grid' }, ...allPorts.map((p, i) => field(`Port ${p}`, dirs[i])))
       : h('div', { class: 'checks' }, ...allPorts.map((p, i) => h('label', {}, boxes[i], `Port ${p}`)));
     host.append(section('Port mirroring', field('Destination port', dest, 'Copies of the traffic of the source ports are sent here.'), choices, h('p', {}, save)));

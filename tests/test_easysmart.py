@@ -148,7 +148,13 @@ async def test_read_everything(tptransport, tpsim, mac):
     assert c.generation == ("A" if mac == MAC_A else "B")
     state = await c.read_state()
     assert state["vlan"]["mode"] == "disabled" and state["qos"]["mode"] == "port"
-    assert state["mirror"] == {"destination": 0, "sources": [], "ingress": [], "egress": []}
+    assert state["mirror"] == {
+        "destination": 0,
+        "sources": [],
+        "ingress": [],
+        "egress": [],
+        "max_sources": 1,
+    }
     assert state["igmp"]["enabled"] is False and state["loop_detection"] is False
     assert state["led"] is True and state["poe"] is None
     assert state["capabilities"] == {"firmware_upgrade": False, "cable_test": False}
@@ -213,8 +219,10 @@ async def test_writes_and_save(tptransport, tpsim):
         await c.set_igmp(block_unknown=True)
     # this switch does not save by itself: Switchyard sends 'save' after every change
     assert a.saves >= 3 and a.saved["loop"] is True
-    await c.set_mirror(8, [1, 2])
-    assert (await c.read_features())["mirror"]["sources"] == [1, 2]
+    await c.set_mirror(8, [2])
+    assert (await c.read_features())["mirror"]["sources"] == [2]
+    with pytest.raises(ValueError, match="one source port"):
+        await c.set_mirror(8, [1, 2])
     with pytest.raises(ValueError):
         await c.set_mirror(1, [1])
     with pytest.raises(ValueError):
@@ -557,12 +565,28 @@ async def test_vlan_modes_and_directional_mirror(tptransport, tpsim):
     a = tpsim.switches[0]
     c = client_for(tptransport, MAC_A)
     assert (await c.read_vlan())["modes"] == ["disabled", "port_basic", "dot1q_advanced"]
-    await c.set_mirror(8, [], ingress=[1, 2], egress=[2, 3])
+    with pytest.raises(ValueError, match="one source port"):
+        await c.set_mirror(8, [], ingress=[1, 2], egress=[2, 3])
+    await c.set_mirror(8, [], ingress=[2], egress=[])
     m = (await c.read_features())["mirror"]
-    assert m["ingress"] == [1, 2] and m["egress"] == [2, 3] and m["sources"] == [1, 2, 3]
-    assert a.config["mirror"][2] == [1, 2]
+    assert m["ingress"] == [2] and m["egress"] == [] and m["sources"] == [2]
+    assert m["max_sources"] == 1 and a.config["mirror"][2] == [2]
     with pytest.raises(ValueError):
         await c.set_mirror(8, [], ingress=[8])
     with pytest.raises(ValueError):
         await c.set_mirror(1, [], ingress=[9])
     await c.set_mirror(0, [])
+
+
+async def test_refused_change_explains_itself(tptransport, tpsim):
+    from switchyard.easysmart.client import EasySmartError
+
+    a = tpsim.switches[0]
+    c = client_for(tptransport, MAC_A)
+    orig = a._set
+    a._set = lambda tlvs: -2  # the switch refuses the change
+    try:
+        with pytest.raises(EasySmartError, match="refused this change"):
+            await c.set_loop_detection(True)
+    finally:
+        a._set = orig
