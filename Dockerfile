@@ -28,6 +28,6 @@ ENV SWITCHYARD_DATA_DIR=/data \
 VOLUME /data
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD ["python", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('SWITCHYARD_SERVER_PORT','8080'),timeout=3)"]
+  CMD ["python", "-c", "import os,urllib.request;h=os.environ.get('SWITCHYARD_SERVER_HOST','');h=h if h not in ('','0.0.0.0','::') else '127.0.0.1';urllib.request.urlopen('http://%s:%s/health' % (h,os.environ.get('SWITCHYARD_SERVER_PORT','8080')),timeout=3)"]
 ENTRYPOINT ["switchyard"]
 CMD ["serve"]
