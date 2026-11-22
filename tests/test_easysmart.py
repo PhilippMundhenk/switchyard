@@ -567,7 +567,7 @@ async def test_slow_change_answer_is_waited_for(tptransport, tpsim):
 async def test_vlan_modes_and_directional_mirror(tptransport, tpsim):
     a = tpsim.switches[0]
     c = client_for(tptransport, MAC_A)
-    assert (await c.read_vlan())["modes"] == ["disabled", "port_basic", "dot1q_advanced"]
+    assert (await c.read_vlan())["modes"] == ["disabled", "port_basic", "dot1q_advanced", "mtu"]
     with pytest.raises(ValueError, match="one source port"):
         await c.set_mirror(8, [], ingress=[1, 2], egress=[2, 3])
     await c.set_mirror(8, [], ingress=[2], egress=[])
