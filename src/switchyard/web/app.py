@@ -111,7 +111,7 @@ class Dot1qBody(BaseModel):
 
 
 class QosBody(BaseModel):
-    mode: Literal["port", "dot1p"] | None = None
+    mode: Literal["port", "dot1p", "dscp"] | None = None
     priorities: dict[int, Priority] | None = None
     ingress: PortMap | None = None
     egress: PortMap | None = None

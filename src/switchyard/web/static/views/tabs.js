@@ -376,7 +376,8 @@ async function qos(host, S) {
   const n = S.state.info.ports;
   const allPorts = Array.from({ length: n }, (_, i) => i + 1);
   const rates = Object.entries(S.state.rate_codes).map(([code, kbit]) => [code, fmtLimit(kbit)]);
-  const mode = select([['dot1p', '802.1p based'], ['port', 'Port based']], q.mode, { 'data-testid': 'qos-mode' });
+  const modeLabels = { dot1p: '802.1p based', port: 'Port based', dscp: 'DSCP/802.1p based' };
+  const mode = select((q.modes || ['dot1p', 'port']).map((m) => [m, modeLabels[m] || m]), q.mode, { 'data-testid': 'qos-mode' });
   const prio = {}; const ingress = {}; const egress = {}; const storm = {};
   const table = h('table', { class: 'controls' }, h('thead', {}, h('tr', {}, ...['Port', 'Priority', 'Ingress limit', 'Egress limit', 'Storm control rate'].map((t) => h('th', {}, t)))),
     h('tbody', {}, ...allPorts.map((p) => {

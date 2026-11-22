@@ -22,6 +22,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - A bridged Docker network with a published port works for switches added by IP address; host networking is only needed for the search (#61).
 
 ### Fixed
+- TP-Link: changes on newer firmware that wants a token besides the session key (TL-SG108PE 5.0, 1.0.0 Build 20230218) no longer go unanswered; QoS offers the DSCP/802.1p mode; the settings scan shows the token (#79).
 - MQTT: when the broker cannot be reached, *Settings* and the log say why (unknown host name, connection refused, no answer, TLS, login refused) instead of only 'connecting' (#60).
 - After an update, browsers no longer keep running the old interface scripts from their cache. The settings scan labels answers without a value as 'empty (not supported)' (#10).
 - 'Copy for bug report' works on plain HTTP (no clipboard API there): copy fallback, else a dialog with the text and a download; the protocol log page is titled 'Protocol log' (#56).

@@ -100,6 +100,8 @@ class EasySmartClient(SwitchDriver):
         self.rsa_modulus = rsa_modulus
         self.lock = asyncio.Lock()
         self.generation: str | None = None  # "A" (token) or "B" (session key)
+        # newer firmware that also wants a token per write (seen on a TL-SG108PE 5.0)
+        self.session_token: bool | None = None
         self.ports: int | None = None
         self.auto_save: bool | None = None
         self.unsupported: set[int] = set()
@@ -194,6 +196,7 @@ class EasySmartClient(SwitchDriver):
 
     def forget_session(self) -> None:
         self.generation = None
+        self.session_token = None
         self.transport.sessions.pop(self.mac, None)
 
     async def _write(self, tlvs: list[tuple[int, bytes]], password: str | None = None) -> Packet:
@@ -201,9 +204,7 @@ class EasySmartClient(SwitchDriver):
         if not password:
             raise PasswordRequired("Enter the switch password first.")
         await self._session()
-        token = 0
-        if self.generation == "A":  # a fresh token for every write
-            token = (await self._exchange(Op.GET, [(T.TOKEN, b"")])).token
+        token = await self._token()
         credentials = [(T.USERNAME, T.cstr(self.username)), (T.PASSWORD, T.cstr(password))]
         reply = await self._exchange(Op.LOGIN, credentials + tlvs, token, retries=0)
         if reply.error in AUTH_ERRORS:
@@ -211,6 +212,26 @@ class EasySmartClient(SwitchDriver):
         if reply.error:
             raise EasySmartError(reply.error, tlvs[0][0] if tlvs else 0)
         return reply
+
+    async def _token(self) -> int:
+        """A fresh token for the next write.
+
+        Older firmware needs one for every write. Newer firmware with a session key may want one
+        too: ask once with a short wait, and remember whether the switch hands out tokens.
+        """
+        if self.generation == "A":
+            return (await self._exchange(Op.GET, [(T.TOKEN, b"")])).token
+        if self.session_token is False:
+            return 0
+        try:
+            reply = await self._exchange(
+                Op.GET, [(T.TOKEN, b"")], timeout=min(self.transport.timeout, 0.8), retries=1
+            )
+        except Unreachable:
+            self.session_token = False
+            return 0
+        self.session_token = True
+        return reply.token
 
     async def write(self, tlvs: list[tuple[int, bytes]], save: bool = True) -> Packet:
         async with self.lock:
@@ -370,6 +391,7 @@ class EasySmartClient(SwitchDriver):
             "egress": rates(egress, T.RATE_EGRESS),
             "storm_control": any(r["enabled"] for r in storm_rows) if storm else None,
             "storm_rates": {r["port"]: self._code(r["kbps"]) for r in storm_rows},
+            "modes": list(T.QOS_MODES.values()),
         }
 
     async def read_lag(self) -> dict | None:
@@ -460,6 +482,8 @@ class EasySmartClient(SwitchDriver):
                     row["status"] = reply.error
                     row["answered"] = reply.error == 0 and reply.has(tag)
                     row["values"] = [v.hex() for v in reply.values(tag)][:16]
+                    if tag == T.TOKEN:
+                        row["values"] = [f"token {reply.token}"]
                     others = sorted({t for t, _ in reply.tlvs if t != tag})
                     if others:
                         row["also"] = others

@@ -504,3 +504,30 @@ def test_driver_defaults_are_unsupported():
     for call in calls:
         with pytest.raises(Unsupported):
             asyncio.run(call)
+
+
+async def test_session_firmware_that_also_wants_a_token(tptransport, tpsim):
+    """TL-SG108PE 5.0 (1.0.0 Build 20230218): session key and a token per write (#79)."""
+    b = tpsim.switches[1]
+    b.session_token = True
+    c = client_for(tptransport, MAC_B)
+    await c.set_loop_detection(True)
+    assert c.generation == "B" and c.session_token is True
+    assert b.config["loop"] is True
+    rows = await c.scan_tags([T.TOKEN], timeout=0.3)
+    assert rows[0]["values"][0].startswith("token ")
+    # firmware without tokens: asked once, then never again
+    b.session_token = False
+    d = client_for(tptransport, MAC_B)
+    await d.set_loop_detection(False)
+    assert d.session_token is False and b.config["loop"] is False
+    await d.set_loop_detection(True)
+    assert b.config["loop"] is True
+
+
+async def test_qos_modes_offered(tptransport, tpsim):
+    c = client_for(tptransport, MAC_A)
+    qos = await c.read_qos()
+    assert qos["modes"] == ["port", "dot1p", "dscp"]
+    await c.set_qos(mode="dscp")
+    assert (await c.read_qos())["mode"] == "dscp"

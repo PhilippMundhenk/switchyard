@@ -503,6 +503,8 @@ class SwitchClient(SwitchDriver):
         codes = {v: k for k, v in T.QOS_MODES.items()}
         prio = {v: k for k, v in T.PRIORITIES.items()}
         if mode is not None:  # changing the mode resets priorities: do it first
+            if mode not in codes:
+                raise ValueError(f"This switch has no QoS mode '{mode}'.")
             await self.write([(T.QOS_MODE, bytes([codes[mode]]))])
         tlvs = [(T.QOS_PRIORITY, bytes([int(p), prio[v]])) for p, v in (priorities or {}).items()]
         for tag, table in ((T.RATE_INGRESS, ingress), (T.RATE_EGRESS, egress)):
