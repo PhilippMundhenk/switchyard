@@ -25,8 +25,9 @@ SCHEMA: list[tuple[str, str, object, str]] = [
         "server",
         "forwarded_allow_ips",
         "127.0.0.1",
-        "Addresses of reverse proxies whose X-Forwarded-* headers are trusted (comma\n"
-        "# separated, or * for all). Needed for the secure cookie flag behind a TLS proxy.",
+        "Addresses or subnets of reverse proxies whose X-Forwarded-* headers are trusted\n"
+        "# (comma separated, e.g. 172.18.0.0/16, or * for all). Needed for the secure cookie\n"
+        "# flag behind a TLS proxy.",
     ),
     (
         "auth",
