@@ -117,6 +117,12 @@ def test_tplink_switch_asks_for_user_and_password(app):
     assert options == ["Disabled", "Port-based", "802.1Q"]
     open_tab(app, "ports", tp)
     expect(app.get_by_test_id("stat-1")).to_contain_text("pkts")
+    # what the protocol cannot do is not offered (#89)
+    open_tab(app, "firmware", tp)
+    expect(app.get_by_test_id("unsupported")).to_contain_text("firmware upgrade")
+    expect(app.get_by_test_id("fw-file")).to_have_count(0)
+    open_tab(app, "cable", tp)
+    expect(app.get_by_test_id("unsupported")).to_contain_text("cable test")
 
 
 def test_cancelling_the_password_dialog_changes_nothing(app):

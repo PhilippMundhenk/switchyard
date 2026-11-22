@@ -394,6 +394,7 @@ class SwitchClient(SwitchDriver):
             **features,
             "rate_codes": T.RATE_CODES,
             "admin_speeds": T.ADMIN_SPEEDS,
+            "capabilities": {"firmware_upgrade": True, "cable_test": True},
         }
 
     # -- changing settings ---------------------------------------------------
