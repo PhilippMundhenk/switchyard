@@ -864,3 +864,14 @@ def test_empty_identity_does_not_wipe_known_info(client, office):
 def test_netgear_has_no_dscp_mode(client, office):
     r = client.put(f"/api/devices/{office}/qos", json={"mode": "dscp"})
     assert r.status_code == 422 and "dscp" in r.json()["message"]
+
+
+def test_state_parts_reads_only_those_sections(client, office):
+    mac = office
+    r = client.get(f"/api/devices/{mac}/state?parts=features,lag")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["partial"] is True and "loop_detection" in data and "lag" in data
+    assert "vlan" not in data and "ports" not in data and data["device"]["mac"] == mac
+    r = client.get(f"/api/devices/{mac}/state?parts=nonsense")
+    assert r.status_code == 422 and "choose from" in r.json()["message"]

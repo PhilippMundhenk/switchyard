@@ -463,6 +463,12 @@ class EasySmartClient(SwitchDriver):
         )
         return state
 
+    async def read_part(self, part: str):
+        if part in ("vlan", "qos", "lag", "features"):
+            async with self.lock:  # these readers expect the caller to hold the lock
+                return await super().read_part(part)
+        return await super().read_part(part)
+
     # -- diagnostics ---------------------------------------------------------
 
     def diagnostic_tags(self) -> list[int]:

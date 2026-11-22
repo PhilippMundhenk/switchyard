@@ -297,7 +297,18 @@ class Manager:
 
     # -- per-switch helpers --------------------------------------------------
 
-    async def state(self, mac: str) -> dict:
+    async def state(self, mac: str, parts: list[str] | None = None) -> dict:
+        if parts:
+            client = self.client(mac)
+            out: dict = {}
+            for part in dict.fromkeys(parts):
+                value = await client.read_part(part)
+                if part == "features":
+                    out.update(value)
+                else:
+                    out[part] = value
+            self.seen[mac] = time.time()
+            return {"device": self.view(self.device(mac)), **out, "partial": True}
         state = await self.client(mac).read_state()
         self.seen[mac] = time.time()
         identity = {

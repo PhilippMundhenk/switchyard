@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from .. import __version__
 from ..config import Config
-from ..drivers.base import AuthError, PasswordRequired, SwitchError, Unreachable, Unsupported
+from ..drivers.base import PARTS, AuthError, PasswordRequired, SwitchError, Unreachable, Unsupported
 from ..drivers.easysmart import EasySmartBackend
 from ..easysmart.packet import RSA_MODULUS
 from ..easysmart.sim import SIM_MODULUS, EasySmartSimulator, demo_easysmart
@@ -672,8 +672,12 @@ def create_app(config: Config) -> FastAPI:
     # -- reading -------------------------------------------------------------
 
     @api.get("/devices/{mac}/state")
-    async def state(mac: str):
-        return await manager().state(mac)
+    async def state(mac: str, parts: str = ""):
+        """The switch's settings; ``parts=vlan,qos`` re-reads only those sections."""
+        wanted = [p.strip() for p in parts.split(",") if p.strip()]
+        if set(wanted) - set(PARTS):
+            raise ValueError(f"parts: choose from {', '.join(PARTS)}")
+        return await manager().state(mac, wanted or None)
 
     @api.get("/devices/{mac}/ports")
     async def ports(mac: str):

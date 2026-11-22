@@ -91,13 +91,14 @@ function portPanel(ports, labels = {}) {
 }
 
 // Runs a change with the password prompt and refreshes afterwards.
+// Applies a change. The result shows as soon as the switch confirms it; the page then re-reads
+// only the sections this tab shows, in the background (a full re-read takes seconds on some
+// switches).
 function applier(S) {
   return (button, fn, message) => run(button, async () => {
     const result = await withSwitchAuth(S.mac, S.name, fn);
     toast((result && result.message) || message || 'Saved.');
-    await S.reload();
-    S.retitle();
-    await S.show();
+    S.refresh(S.tab && S.tab.parts);
     return result;
   });
 }
@@ -815,15 +816,15 @@ async function maintenance(host, S) {
 }
 
 export const TABS = [
-  { id: 'overview', label: 'Overview', render: overview },
-  { id: 'network', label: 'Network', render: network },
-  { id: 'ports', label: 'Ports', render: ports },
-  { id: 'vlan', label: 'VLAN', render: vlan },
-  { id: 'qos', label: 'QoS', render: qos },
-  { id: 'features', label: 'Mirroring & multicast', render: features },
-  { id: 'ports-config', label: 'Speed & flow', render: portSettings },
-  { id: 'lag', label: 'Link aggregation', render: lagTab },
-  { id: 'cable', label: 'Cable test', render: cable },
-  { id: 'firmware', label: 'Firmware', render: firmware },
-  { id: 'maintenance', label: 'Maintenance', render: maintenance },
+  { id: 'overview', label: 'Overview', render: overview, parts: null },
+  { id: 'network', label: 'Network', render: network, parts: ['info'] },
+  { id: 'ports', label: 'Ports', render: ports, parts: ['ports'] },
+  { id: 'vlan', label: 'VLAN', render: vlan, parts: ['vlan'] },
+  { id: 'qos', label: 'QoS', render: qos, parts: ['qos'] },
+  { id: 'features', label: 'Mirroring & multicast', render: features, parts: ['features'] },
+  { id: 'ports-config', label: 'Speed & flow', render: portSettings, parts: ['port_admin', 'ports'] },
+  { id: 'lag', label: 'Link aggregation', render: lagTab, parts: ['lag', 'port_admin'] },
+  { id: 'cable', label: 'Cable test', render: cable, parts: null },
+  { id: 'firmware', label: 'Firmware', render: firmware, parts: null },
+  { id: 'maintenance', label: 'Maintenance', render: maintenance, parts: null },
 ];
