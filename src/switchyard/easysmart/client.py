@@ -477,6 +477,8 @@ class EasySmartClient(SwitchDriver):
             rate_codes=self.rate_codes,
             admin_speeds={0: "auto", 1: "disabled", **{c: T.SPEEDS[c][0] for c in range(2, 7)}},
             poe=None,
+            # no protocol layout is known for these on Easy Smart switches
+            capabilities={"firmware_upgrade": False, "cable_test": False},
         )
         return state
 

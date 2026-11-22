@@ -151,6 +151,7 @@ async def test_read_everything(tptransport, tpsim, mac):
     assert state["mirror"] == {"destination": 0, "sources": [], "ingress": [], "egress": []}
     assert state["igmp"]["enabled"] is False and state["loop_detection"] is False
     assert state["led"] is True and state["poe"] is None
+    assert state["capabilities"] == {"firmware_upgrade": False, "cable_test": False}
     ports = state["ports"]
     assert ports[0]["up"] and ports[0]["speed_mbps"] == 1000 and ports[0]["rx_bytes"] is None
     assert "rx_packets" in ports[0] and ports[0]["errors"] == 0

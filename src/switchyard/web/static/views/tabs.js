@@ -496,7 +496,11 @@ async function features(host, S) {
 }
 
 // ------------------------------------------------------------------- cable
+// false when the switch's protocol cannot do it (TP-Link: firmware upgrade, cable test)
+const can = (S, what) => !S.state.capabilities || S.state.capabilities[what] !== false;
+
 async function cable(host, S) {
+  if (!can(S, 'cable_test')) return host.append(section('Cable test', unsupported('The cable test')));
   const n = S.state.info.ports;
   const allPorts = Array.from({ length: n }, (_, i) => i + 1);
   const boxes = allPorts.map((p) => h('input', { type: 'checkbox', 'data-testid': `cable-port-${p}` }));
@@ -607,6 +611,10 @@ async function lagTab(host, S) {
 
 // ------------------------------------------------------------------ firmware
 async function firmware(host, S) {
+  if (!can(S, 'firmware_upgrade')) {
+    return host.append(section('Firmware', h('p', {}, `Installed: ${S.state.info.firmware || '?'}`),
+      unsupported('A firmware upgrade through Switchyard'), h('p', { class: 'muted' }, "Use the switch's own web interface or the vendor's utility to upgrade it.")));
+  }
   const apply = applier(S);
   const info = S.state.info;
   const file = h('input', { type: 'file', accept: '.flash,.bin,.img', 'aria-label': 'Firmware file', 'data-testid': 'fw-file' });
