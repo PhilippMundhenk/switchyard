@@ -118,7 +118,7 @@ class SwitchDriver(ABC):
     async def set_qos(self, **fields) -> None:
         self._unsupported("QoS")
 
-    async def set_mirror(self, destination: int, sources: list[int]) -> None:
+    async def set_mirror(self, destination: int, sources: list[int], **directions) -> None:
         self._unsupported("port mirroring")
 
     async def set_igmp(self, **fields) -> None:

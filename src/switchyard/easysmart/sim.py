@@ -51,6 +51,7 @@ class SimEasySmart:
     links: list[int] = field(default_factory=list)
     lag_groups: int = 2
     reboot_seconds: float = 3.0
+    write_delay: float = 0.0  # answer changes this late (some take the real switch seconds)
     traffic: bool = True
 
     def __post_init__(self):
@@ -454,7 +455,17 @@ class _SimProtocol(asyncio.DatagramProtocol):
             if reply is not None:
                 encrypted = key or (switch.session_key if request.op == Op.LOGIN else None)
                 raw = reply.encode_session(encrypted) if encrypted else reply.encode()
-                self.transport.sendto(raw, addr)
+                delay = (
+                    switch.write_delay
+                    if request.op == Op.LOGIN
+                    and request.tlvs[:1] != []
+                    and request.tlvs[0][0] != T.KEY_EXCHANGE
+                    else 0
+                )
+                if delay:
+                    asyncio.get_running_loop().call_later(delay, self.transport.sendto, raw, addr)
+                else:
+                    self.transport.sendto(raw, addr)
 
     @staticmethod
     def _decode(switch: SimEasySmart, data: bytes) -> tuple[Packet | None, bytes | None]:

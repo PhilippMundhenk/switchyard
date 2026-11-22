@@ -518,7 +518,15 @@ class SwitchClient(SwitchDriver):
         if tlvs:
             await self.write(tlvs)
 
-    async def set_mirror(self, destination: int, sources: list[int]) -> None:
+    async def set_mirror(
+        self,
+        destination: int,
+        sources: list[int],
+        ingress: list[int] | None = None,
+        egress: list[int] | None = None,
+    ) -> None:
+        if ingress is not None or egress is not None:
+            raise ValueError("This switch mirrors received and sent traffic together only.")
         count = await self._port_count()
         if destination > count:
             raise ValueError(f"The destination port must be 1 to {count}.")

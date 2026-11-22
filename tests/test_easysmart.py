@@ -540,3 +540,28 @@ async def test_read_part(tptransport, tpsim):
     assert (await c.read_part("lag"))["groups"] == 2
     with pytest.raises(ValueError):
         await c.read_part("nonsense")
+
+
+async def test_slow_change_answer_is_waited_for(tptransport, tpsim):
+    """The switch applies a change but answers after a second or two (#83)."""
+    a = tpsim.switches[0]
+    c = client_for(tptransport, MAC_A)
+    await c.read_info()
+    a.write_delay = 1.5  # longer than the read timeout of these tests
+    await c.set_loop_detection(True)
+    assert a.config["loop"] is True and a.writes >= 1
+
+
+async def test_vlan_modes_and_directional_mirror(tptransport, tpsim):
+    a = tpsim.switches[0]
+    c = client_for(tptransport, MAC_A)
+    assert (await c.read_vlan())["modes"] == ["disabled", "port_basic", "dot1q_advanced"]
+    await c.set_mirror(8, [], ingress=[1, 2], egress=[2, 3])
+    m = (await c.read_features())["mirror"]
+    assert m["ingress"] == [1, 2] and m["egress"] == [2, 3] and m["sources"] == [1, 2, 3]
+    assert a.config["mirror"][2] == [1, 2]
+    with pytest.raises(ValueError):
+        await c.set_mirror(8, [], ingress=[8])
+    with pytest.raises(ValueError):
+        await c.set_mirror(1, [], ingress=[9])
+    await c.set_mirror(0, [])
