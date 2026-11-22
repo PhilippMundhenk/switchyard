@@ -133,9 +133,15 @@ class Manager:
         device = self.store.get(mac)
         if device is None:
             return
+        # an answer without a value (some firmware answers a search with an empty reply) must
+        # not wipe what is already known
         info = {
             **device.get("info", {}),
-            **{k: v for k, v in identity.items() if k not in ("source_ip", "protocol")},
+            **{
+                k: v
+                for k, v in identity.items()
+                if k not in ("source_ip", "protocol") and v not in (None, "")
+            },
         }
         if info != device.get("info"):
             self.store.update(mac, info=info, last_seen=self.seen[mac])

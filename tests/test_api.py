@@ -847,3 +847,15 @@ def test_request_bodies_are_limited(client, office):
     assert r.status_code == 413
     r = client.post("/api/login", json={"password": "x" * 300})
     assert r.status_code == 422  # passwords are capped before hashing
+
+
+def test_empty_identity_does_not_wipe_known_info(client, office):
+    m = client.app.state.manager
+    mac = office
+    before = dict(m.store.get(mac)["info"])
+    assert before["model"]
+    m._note_seen({"mac": mac, "model": None, "name": "", "ip": None, "firmware": None})
+    after = m.store.get(mac)["info"]
+    assert after["model"] == before["model"] and after["ip"] == before["ip"]
+    m._note_seen({"mac": mac, "name": "renamed"})
+    assert m.store.get(mac)["info"]["name"] == "renamed"
