@@ -117,6 +117,8 @@ class QosBody(BaseModel):
     egress: PortMap | None = None
     storm_control: bool | None = None
     storm_rates: PortMap | None = None
+    # TP-Link: which frames storm control counts
+    storm_types: dict[Literal["unknown_unicast", "multicast", "broadcast"], bool] | None = None
 
 
 class MirrorBody(BaseModel):
@@ -719,10 +721,12 @@ def create_app(config: Config) -> FastAPI:
 
     @api.put("/devices/{mac}/qos")
     async def set_qos(mac: str, body: QosBody):
+        client = manager().client(mac)
+        codes = getattr(client, "rate_codes", T.RATE_CODES)  # TP-Link has its own table
         for table in (body.ingress, body.egress, body.storm_rates):
-            if table and any(code not in T.RATE_CODES for code in table.values()):
+            if table and any(code not in codes for code in table.values()):
                 raise ValueError("Unknown rate limit.")
-        await manager().client(mac).set_qos(**body.model_dump())
+        await client.set_qos(**body.model_dump())
         return ok("QoS settings saved.")
 
     @api.put("/devices/{mac}/lag")

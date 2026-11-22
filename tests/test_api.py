@@ -880,3 +880,8 @@ def test_state_parts_reads_only_those_sections(client, office):
 def test_netgear_mirrors_both_directions_only(client, office):
     r = client.put(f"/api/devices/{office}/mirror", json={"destination": 8, "ingress": [1]})
     assert r.status_code == 422 and "together" in r.json()["message"]
+
+
+def test_netgear_storm_control_has_no_frame_types(client, office):
+    r = client.put(f"/api/devices/{office}/qos", json={"storm_types": {"broadcast": True}})
+    assert r.status_code == 422 and "frame type" in r.json()["message"]

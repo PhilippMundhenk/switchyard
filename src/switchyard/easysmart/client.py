@@ -86,6 +86,14 @@ def parse_identity(packet: Packet) -> dict:
     }
 
 
+def _storm_types(rows: list[dict]) -> dict[str, bool]:
+    """The frame types of the first port with storm control on; all three when none is on."""
+    on = next((r for r in rows if r["enabled"]), None)
+    if on is None:
+        return {"unknown_unicast": True, "multicast": True, "broadcast": True}
+    return {k: on[k] for k in ("unknown_unicast", "multicast", "broadcast")}
+
+
 class EasySmartClient(SwitchDriver):
     protocol = "easysmart"
     vendor = "TP-Link"
@@ -413,6 +421,8 @@ class EasySmartClient(SwitchDriver):
             "egress": rates(egress, T.RATE_EGRESS),
             "storm_control": any(r["enabled"] for r in storm_rows) if storm else None,
             "storm_rates": {r["port"]: self._code(r["kbps"]) for r in storm_rows},
+            # frame types storm control counts (the same for every port in Switchyard)
+            "storm_types": _storm_types(storm_rows) if storm else None,
             "modes": list(T.QOS_MODES.values()),
         }
 
@@ -639,6 +649,7 @@ class EasySmartClient(SwitchDriver):
         egress: dict[int, int] | None = None,
         storm_control: bool | None = None,
         storm_rates: dict[int, int] | None = None,
+        storm_types: dict[str, bool] | None = None,
     ) -> None:
         """Rates here are codes of ``RATE_CODES`` like on NETGEAR; the switch takes kbit/s."""
         modes = {v: k for k, v in T.QOS_MODES.items()}
@@ -661,17 +672,28 @@ class EasySmartClient(SwitchDriver):
             for p, code in sorted((table or {}).items()):
                 kbps = self.rate_kbps(code)
                 await self.write([(tag, T.pack_port_rate(int(p), kbps))], save=False)
-        if storm_control is not None or storm_rates:
+        if storm_control is not None or storm_rates or storm_types is not None:
             count = await self._port_count()
+            current = await self.read_qos() or {}
             rates = storm_rates or {}
+            types = {**(current.get("storm_types") or {}), **(storm_types or {})}
+            flags = {
+                "unicast": types.get("unknown_unicast", True),
+                "multicast": types.get("multicast", True),
+                "broadcast": types.get("broadcast", True),
+            }
+            if storm_types is not None and not any(flags.values()):
+                raise ValueError("Choose at least one frame type for storm control.")
             for p in range(1, count + 1):
                 if storm_control is False:
                     kbps = 0
                 elif p in rates or str(p) in rates:
                     kbps = self.rate_kbps(rates.get(p, rates.get(str(p))))
+                elif storm_types is not None and current.get("storm_rates", {}).get(p):
+                    kbps = self.rate_kbps(current["storm_rates"][p])  # new types, same rate
                 else:
                     continue
-                await self.write([(T.STORM, T.pack_storm(p, kbps))], save=False)
+                await self.write([(T.STORM, T.pack_storm(p, kbps, **flags))], save=False)
         async with self.lock:
             await self._save()
 

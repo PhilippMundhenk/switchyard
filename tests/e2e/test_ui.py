@@ -117,6 +117,9 @@ def test_tplink_switch_asks_for_user_and_password(app):
     open_tab(app, "vlan", tp)
     options = app.get_by_test_id("vlan-mode").locator("option").all_inner_texts()
     assert options == ["Disabled", "Port-based", "802.1Q"]
+    # storm control frame types (#88)
+    open_tab(app, "qos", tp)
+    expect(app.get_by_test_id("storm-types")).to_contain_text("multicast")
     open_tab(app, "ports", tp)
     expect(app.get_by_test_id("stat-1")).to_contain_text("pkts")
     # what the protocol cannot do is not offered (#89)

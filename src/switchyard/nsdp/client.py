@@ -500,7 +500,10 @@ class SwitchClient(SwitchDriver):
         egress: dict[int, int] | None = None,
         storm_control: bool | None = None,
         storm_rates: dict[int, int] | None = None,
+        storm_types: dict[str, bool] | None = None,
     ) -> None:
+        if storm_types is not None:
+            raise ValueError("This switch's storm control has no frame type choice.")
         codes = {v: k for k, v in T.QOS_MODES.items()}
         prio = {v: k for k, v in T.PRIORITIES.items()}
         if mode is not None:  # changing the mode resets priorities: do it first
