@@ -37,6 +37,9 @@ class SimEasySmart:
     hardware: str = "TL-SG108PE 3.0"
     firmware: str = "1.0.0 Build 20201030 Rel.62149"
     generation: str = "A"
+    # newer firmware that still hands out tokens and drops writes without one
+    # (seen on a TL-SG108PE 5.0, firmware 1.0.0 Build 20230218)
+    session_token: bool = False
     ports: int = 8
     name: str = "TL-SG108PE"
     ip: str = "192.168.0.1"
@@ -394,7 +397,7 @@ class SimEasySmart:
                     self._reply(request, Op.REPLY, [], error=1) if self.generation == "B" else None
                 )
             tag = request.tlvs[0][0]
-            if tag == T.TOKEN and self.generation == "A":
+            if tag == T.TOKEN and (self.generation == "A" or self.session_token):
                 token = random.randint(1, 0xFFFF)
                 self.tokens.add(token)
                 return self._reply(request, Op.REPLY, [], token=token)
@@ -411,7 +414,7 @@ class SimEasySmart:
                 cipher = int.from_bytes(raw[2:10], "little")
                 self.session_key = pow(cipher, SIM_PRIVATE, SIM_MODULUS).to_bytes(8, "little")
                 return self._reply(request, Op.RETURN, [], error=KEY_ACCEPTED)
-            if self.generation == "A":
+            if self.generation == "A" or self.session_token:
                 if request.token not in self.tokens:
                     return None  # a missing or spent token is dropped without an answer
                 self.tokens.discard(request.token)

@@ -859,3 +859,8 @@ def test_empty_identity_does_not_wipe_known_info(client, office):
     assert after["model"] == before["model"] and after["ip"] == before["ip"]
     m._note_seen({"mac": mac, "name": "renamed"})
     assert m.store.get(mac)["info"]["name"] == "renamed"
+
+
+def test_netgear_has_no_dscp_mode(client, office):
+    r = client.put(f"/api/devices/{office}/qos", json={"mode": "dscp"})
+    assert r.status_code == 422 and "dscp" in r.json()["message"]

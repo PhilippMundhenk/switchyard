@@ -53,6 +53,12 @@ ESCP: "The firmware released in 2023 added the RSA key exchange". ESCP never tri
 Gen B. **[INFER]** A client can detect the generation by sending the 528 key exchange: reply with code
 4098 = Gen B; silence = Gen A. Whether Gen B firmware still answers GET 2305 is unknown.
 
+**Observed on hardware (Switchyard #79):** a TL-SG108PE 5.0 with firmware 1.0.0 Build 20230218
+accepts the session key exchange (generation B), answers reads with token 0, but also answers
+GET 2305, and silently drops a write that carries user name and password without a token.
+Switchyard therefore asks for a token before every write on generation B too, once with a short
+wait, and remembers whether the switch hands them out.
+
 ## 2. Transport
 
 | Fact | Source |
