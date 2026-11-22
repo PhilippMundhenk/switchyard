@@ -403,6 +403,9 @@ async function qos(host, S) {
       { key: 'storm', label: 'Storm control rate', short: 'storm', controls: storm },
     ]);
   }
+  // TP-Link: which frames storm control counts
+  const typeNames = { unknown_unicast: 'unknown unicast', multicast: 'multicast', broadcast: 'broadcast' };
+  const types = q.storm_types ? Object.fromEntries(Object.keys(typeNames).map((k) => [k, h('input', { type: 'checkbox', checked: Boolean(q.storm_types[k]), 'data-testid': `storm-type-${k}` })])) : null;
   mode.addEventListener('change', sync); stormOn.addEventListener('change', sync); sync();
   const save = h('button', { class: 'btn primary', 'data-testid': 'qos-save' }, 'Apply');
   save.addEventListener('click', async () => {
@@ -416,11 +419,16 @@ async function qos(host, S) {
     if (q.storm_control !== null) {
       body.storm_control = stormOn.checked;
       if (stormOn.checked) body.storm_rates = Object.fromEntries(allPorts.map((p) => [p, Number(storm[p].value)]));
+      if (stormOn.checked && types) {
+        body.storm_types = Object.fromEntries(Object.entries(types).map(([k, box]) => [k, box.checked]));
+        if (!Object.values(body.storm_types).some(Boolean)) return toast('Choose at least one frame type for storm control.', 'error');
+      }
     }
     await apply(save, () => put(`${dev(S.mac)}/qos`, body), 'QoS settings saved.');
   });
   host.append(section('Quality of service', field('QoS mode', mode, 'Port priorities can be set in port-based mode only.'),
-    h('label', { class: 'check' }, stormOn, ' Broadcast storm control'), editor ? editor.element : h('div', { class: 'table-wrap' }, table), h('p', {}, save)));
+    h('label', { class: 'check' }, stormOn, types ? ' Storm control' : ' Broadcast storm control'),
+    types ? h('div', { class: 'checks', 'data-testid': 'storm-types' }, h('span', { class: 'muted' }, 'Counts:'), ...Object.entries(types).map(([k, box]) => h('label', {}, box, ` ${typeNames[k]}`))) : null, editor ? editor.element : h('div', { class: 'table-wrap' }, table), h('p', {}, save)));
 }
 
 // ---------------------------------------------------------------- features

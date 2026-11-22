@@ -400,6 +400,9 @@ def test_api_with_tplink(tmp_path, sim, tpsim):
         assert device["needs_username"] and device["unicast"] is False
         state = c.get(f"/api/devices/{MAC_A}/state").json()
         assert state["info"]["model"] == "TL-SG108PE" and state["lag"]["groups"] == 2
+        # TP-Link's own rate table (1 Gbit/s is code 12; NETGEAR's table ends at 11)
+        r = c.put(f"/api/devices/{MAC_A}/qos", json={"ingress": {"2": 12}})
+        assert r.status_code == 200, r.text
         r = c.put(f"/api/devices/{MAC_A}/loop-detection", json={"enabled": True})
         assert r.status_code == 200, r.text
         r = c.post(f"/api/devices/{MAC_A}/cable-test", json={"ports": [1]})
@@ -590,3 +593,23 @@ async def test_refused_change_explains_itself(tptransport, tpsim):
             await c.set_loop_detection(True)
     finally:
         a._set = orig
+
+
+async def test_storm_control_frame_types(tptransport, tpsim):
+    a = tpsim.switches[0]
+    c = client_for(tptransport, MAC_A)
+    q = await c.read_qos()
+    assert q["storm_types"] == {"unknown_unicast": True, "multicast": True, "broadcast": True}
+    await c.set_qos(storm_rates={3: 2}, storm_types={"unknown_unicast": False, "multicast": False})
+    q = await c.read_qos()
+    assert q["storm_types"] == {"unknown_unicast": False, "multicast": False, "broadcast": True}
+    assert a.config["storm"][3] == [0, 0, 1, 1024]
+    # changing only the types keeps the rate
+    await c.set_qos(storm_types={"multicast": True})
+    assert a.config["storm"][3] == [0, 1, 1, 1024]
+    with pytest.raises(ValueError, match="at least one"):
+        await c.set_qos(
+            storm_types={"unknown_unicast": False, "multicast": False, "broadcast": False}
+        )
+    await c.set_qos(storm_control=False)
+    assert a.config["storm"][3] == [0, 0, 0, 0]
