@@ -613,3 +613,34 @@ async def test_storm_control_frame_types(tptransport, tpsim):
         )
     await c.set_qos(storm_control=False)
     assert a.config["storm"][3] == [0, 0, 0, 0]
+
+
+async def test_port_groups_mtu_vlan_and_pvid_reset(tptransport, tpsim):
+    a = tpsim.switches[0]
+    c = client_for(tptransport, MAC_A)
+    vlan = await c.read_vlan()
+    assert "mtu" in vlan["modes"] and vlan["exclusive_groups"] and vlan["pvid_reset_on_disable"]
+    # port-based: a new group takes its ports out of group 1 (#87)
+    await c.set_vlan_mode("port_basic")
+    await c.set_port_vlans([{"id": 1, "members": [1, 4, 5, 6, 7, 8]}, {"id": 2, "members": [2, 3]}])
+    groups = {g["id"]: g["members"] for g in (await c.read_vlan())["port_vlans"]}
+    assert groups == {1: [1, 4, 5, 6, 7, 8], 2: [2, 3]}
+    await c.set_port_vlans([{"id": 1, "members": list(range(1, 9))}])
+    assert {g["id"] for g in (await c.read_vlan())["port_vlans"]} == {1}
+    # MTU VLAN with an uplink port
+    with pytest.raises(ValueError, match="uplink"):
+        await c.set_vlan_mode("mtu")
+    await c.set_vlan_mode("mtu", uplink=8)
+    vlan = await c.read_vlan()
+    assert vlan["mode"] == "mtu" and vlan["mtu_uplink"] == 8 and a.config["mtu_vlan"]
+    # leaving MTU VLAN for 802.1Q, then off: PVIDs back to 1
+    await c.set_vlan_mode("dot1q_advanced")
+    assert not a.config["mtu_vlan"] and a.config["dot1q"]
+    await c.apply_dot1q(
+        [{"id": 1, "members": list(range(1, 9)), "tagged": []}, {"id": 5, "members": [3]}], {3: 5}
+    )
+    await c.set_vlan_mode("disabled")
+    assert set(a.config["pvid"].values()) == {1}
+    await c.set_vlan_mode("mtu", uplink=1)
+    await c.set_vlan_mode("disabled")
+    assert (await c.read_vlan())["mode"] == "disabled" and not a.config["mtu_vlan"]

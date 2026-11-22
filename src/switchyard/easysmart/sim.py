@@ -88,6 +88,7 @@ class SimEasySmart:
             "pvid": dict.fromkeys(all_ports, 1),
             "port_groups": {1: all_ports},
             "mtu_vlan": False,
+            "mtu_uplink": 1,
             "qos_mode": 0,
             "priority": dict.fromkeys(all_ports, 0),
             "ingress": dict.fromkeys(all_ports, 0),
@@ -201,7 +202,7 @@ class SimEasySmart:
                 for p, s in sorted(c["storm"].items())
             ]
         if tag == T.MTU_VLAN:
-            return [(tag, bytes([c["mtu_vlan"], 1]))]
+            return [(tag, bytes([c["mtu_vlan"], c["mtu_uplink"]]))]
         if tag == T.PORT_VLAN_ENABLED:
             rows = [
                 (T.PORT_VLAN, T.pack_group_mask(g, m)) for g, m in sorted(c["port_groups"].items())
@@ -328,21 +329,33 @@ class SimEasySmart:
                 c["ingress"][s["port"]] = 0
             else:
                 c["storm"][s["port"]] = [0, 0, 0, 0]
+        elif tag == T.MTU_VLAN:
+            if not 1 <= v[1] <= self.ports:
+                return 7503
+            c["mtu_vlan"], c["mtu_uplink"] = v[0] == 1, v[1]
+            if c["mtu_vlan"]:
+                c.update(dot1q=False, port_vlan=False)
         elif tag == T.DOT1Q_ENABLED:
             if v[0] == 1 and not c["dot1q"]:
                 all_ports = list(range(1, self.ports + 1))
                 c.update(
                     dot1q=True,
+                    mtu_vlan=False,
                     port_vlan=False,
                     vlans={1: {"members": all_ports, "tagged": [], "name": "Default_VLAN"}},
                     pvid=dict.fromkeys(all_ports, 1),
                 )
             elif v[0] == 0:
+                # the switch resets every PVID to 1 when 802.1Q is switched off
                 c["dot1q"] = False
+                c["pvid"] = dict.fromkeys(c["pvid"], 1)
         elif tag == T.PORT_VLAN_ENABLED:
             if v[0] == 1:
                 c.update(
-                    port_vlan=True, dot1q=False, port_groups={1: list(range(1, self.ports + 1))}
+                    port_vlan=True,
+                    dot1q=False,
+                    mtu_vlan=False,
+                    port_groups={1: list(range(1, self.ports + 1))},
                 )
             else:
                 c["port_vlan"] = False

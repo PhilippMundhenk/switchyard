@@ -781,3 +781,28 @@ def test_change_refreshes_only_its_section_in_the_background(app):
     expect(app.locator(".toast").last).to_contain_text("Loop detection saved")
     expect(app.get_by_test_id("refreshing")).to_be_hidden()
     expect(app.get_by_test_id("loop-enabled")).to_be_checked()
+
+
+def test_tplink_port_based_groups_and_mtu_vlan(app):
+    tp = "50:c7:bf:5e:00:01"
+    add_switch(app, tp, "admin")
+    api(app, "POST", f"/devices/{tp}/login", {"password": "admin", "username": "admin"})
+    api(app, "PUT", f"/devices/{tp}/vlan/mode", {"mode": "port_basic"})
+    open_tab(app, "vlan", tp)
+    expect(app.get_by_test_id("pvid-hint")).to_be_visible()
+    # a new group takes its ports out of group 1 (#87)
+    app.get_by_test_id("vlan-add-group").click()
+    expect(app.get_by_test_id("vlan-row-2")).to_be_visible()
+    app.get_by_test_id("cell-2-2").click()
+    app.get_by_test_id("cell-2-3").click()
+    expect(app.get_by_test_id("cell-1-2")).to_have_attribute("aria-pressed", "false")
+    app.get_by_test_id("vlan-apply").click()
+    expect(app.locator(".toast").last).to_contain_text("VLANs saved")
+    groups = api(app, "GET", f"/devices/{tp}/state").json()["vlan"]["port_vlans"]
+    assert {"id": 2, "members": [2, 3]} in groups
+    # MTU VLAN with its uplink port
+    app.get_by_test_id("vlan-mode").select_option("mtu")
+    app.get_by_test_id("vlan-uplink").select_option("8")
+    app.get_by_test_id("vlan-mode-apply").click()
+    app.get_by_test_id("confirm-ok").click()
+    expect(app.get_by_test_id("mtu-info")).to_contain_text("uplink port 8", timeout=20000)

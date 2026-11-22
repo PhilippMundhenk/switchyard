@@ -63,6 +63,10 @@ loop prevention changes), although it applied it; Switchyard waits up to 5 s for
 write and never resends one (#83). TP-Link uses the version 1.0.0 for several builds of this
 hardware (Build 20220930 on the download page, 20230218 on the tested unit): the build string,
 not the version, tells firmware apart.
+Also on that switch (#85): mirroring takes exactly one source port (received, sent or both);
+port-based groups are exclusive and group 1 takes every port of no other group, so Switchyard
+writes only the other groups. Writing MTU VLAN (8192: enabled, uplink port) is implemented from
+these notes and not yet confirmed on hardware.
 
 ## 2. Transport
 

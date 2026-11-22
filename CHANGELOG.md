@@ -23,6 +23,10 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - A bridged Docker network with a published port works for switches added by IP address; host networking is only needed for the search (#61).
 
 ### Fixed
+- TP-Link VLAN page: port-based groups can be added (a port is in one group; group 1 holds the rest), MTU VLAN mode with its uplink port, hints on PVIDs (#87).
+- TP-Link mirroring takes one source port with its direction; a refused change explains itself (#86).
+- TP-Link storm control: choose unknown unicast, multicast and broadcast frames; the API accepts TP-Link's own rate choices (#88).
+- Firmware and cable test tabs say 'not supported' where the switch's protocol cannot do them (#89).
 - TP-Link: a change the switch answers slowly is no longer reported as 'does not answer'; the VLAN page offers only the switch's modes (port-based, 802.1Q); mirroring can copy received and sent traffic per port separately (#83).
 - TP-Link: changes on newer firmware that wants a token besides the session key (TL-SG108PE 5.0, 1.0.0 Build 20230218) no longer go unanswered; QoS offers the DSCP/802.1p mode; the settings scan shows the token (#79).
 - MQTT: when the broker cannot be reached, *Settings* and the log say why (unknown host name, connection refused, no answer, TLS, login refused) instead of only 'connecting' (#60).

@@ -106,7 +106,7 @@ class SwitchDriver(ABC):
     async def set_network(self, **fields) -> None:
         self._unsupported("changing name and IP settings")
 
-    async def set_vlan_mode(self, mode: str) -> None:
+    async def set_vlan_mode(self, mode: str, uplink: int | None = None) -> None:
         self._unsupported("this VLAN mode")
 
     async def set_port_vlans(self, vlans: list[dict]) -> None:

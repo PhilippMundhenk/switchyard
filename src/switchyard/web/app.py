@@ -40,7 +40,9 @@ VIEWER_MAY_POST = {"/api/logout", "/api/discovery/scan"}
 MAC_PATH = re.compile(r"^(/api/devices/)([0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5})(/.*)?$")
 STATIC = Path(__file__).parent / "static"
 
-VlanMode = Literal["disabled", "port_basic", "port_advanced", "dot1q_basic", "dot1q_advanced"]
+VlanMode = Literal[
+    "disabled", "port_basic", "port_advanced", "dot1q_basic", "dot1q_advanced", "mtu"
+]
 Priority = Literal["high", "medium", "normal", "low"]
 Vid = int
 PortMap = dict[int, int]
@@ -88,6 +90,7 @@ class NetworkBody(BaseModel):
 
 class VlanModeBody(BaseModel):
     mode: VlanMode
+    uplink: int | None = Field(None, ge=1, le=52)  # MTU VLAN (TP-Link)
 
 
 class PortVlan(BaseModel):
@@ -706,7 +709,8 @@ def create_app(config: Config) -> FastAPI:
 
     @api.put("/devices/{mac}/vlan/mode")
     async def set_vlan_mode(mac: str, body: VlanModeBody):
-        await manager().client(mac).set_vlan_mode(body.mode)
+        uplink = {"uplink": body.uplink} if body.uplink is not None else {}
+        await manager().client(mac).set_vlan_mode(body.mode, **uplink)
         return ok("VLAN mode changed. The switch reset its VLAN table.")
 
     @api.put("/devices/{mac}/vlan/port-based")
