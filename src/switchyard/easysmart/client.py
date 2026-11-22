@@ -358,6 +358,7 @@ class EasySmartClient(SwitchDriver):
         count = await self._port_count()
         dot1q = await self._read(T.DOT1Q_ENABLED)
         port_based = await self._read(T.PORT_VLAN_ENABLED)
+        mtu = await self._read(T.MTU_VLAN)
         if dot1q is None and port_based is None:
             return None
         out = {
@@ -366,9 +367,19 @@ class EasySmartClient(SwitchDriver):
             "port_vlans": [],
             "dot1q": [],
             "pvid": {},
-            # one port-based and one 802.1Q mode (no basic/advanced as on NETGEAR)
-            "modes": ["disabled", "port_basic", "dot1q_advanced"],
+            # one port-based and one 802.1Q mode (no basic/advanced as on NETGEAR), and MTU VLAN
+            "modes": ["disabled", "port_basic", "dot1q_advanced"] + (["mtu"] if mtu else []),
+            # a port is in exactly one port-based group; group 1 holds the ports of no other
+            "exclusive_groups": True,
+            # the switch resets every PVID to 1 when 802.1Q is switched off
+            "pvid_reset_on_disable": True,
         }
+        mtu_value = mtu.first(T.MTU_VLAN) if mtu else None
+        if mtu_value and len(mtu_value) >= 2:
+            out["mtu_uplink"] = mtu_value[1]
+            if mtu_value[0] == 1:
+                out["mode"] = "mtu"
+                return out
         if dot1q is not None and (dot1q.first(T.DOT1Q_ENABLED) or b"\x00")[:1] == b"\x01":
             out["mode"] = "dot1q_advanced"
             vlans = await self._get(T.DOT1Q_VLAN)
@@ -573,13 +584,27 @@ class EasySmartClient(SwitchDriver):
             ]
         )
 
-    async def set_vlan_mode(self, mode: str) -> None:
+    async def set_vlan_mode(self, mode: str, uplink: int | None = None) -> None:
+        if mode == "mtu":
+            # MTU VLAN: every port talks to the uplink port only (layout from the protocol
+            # notes, writing it is not verified on hardware yet)
+            count = await self._port_count()
+            if uplink is None or not 1 <= uplink <= count:
+                raise ValueError(f"MTU VLAN needs an uplink port, 1 to {count}.")
+            await self.write([(T.MTU_VLAN, bytes([1, uplink]))])
+            return
+        current = await self.read_vlan() or {}
+        if current.get("mode") == "mtu":  # leave MTU VLAN first
+            await self.write([(T.MTU_VLAN, bytes([0, current.get("mtu_uplink") or 1]))], save=False)
         if mode.startswith("dot1q"):
             await self.write([(T.DOT1Q_ENABLED, b"\x01")])
         elif mode.startswith("port"):
             await self.write([(T.PORT_VLAN_ENABLED, b"\x01")])
         elif mode == "disabled":  # switch off whichever mode is on (layout: unverified)
-            current = await self.read_vlan() or {}
+            if current.get("mode") == "mtu":
+                async with self.lock:
+                    await self._save()
+                return
             tag = T.PORT_VLAN_ENABLED if current.get("mode") == "port_basic" else T.DOT1Q_ENABLED
             await self.write([(tag, b"\x00")])
         else:
@@ -592,6 +617,8 @@ class EasySmartClient(SwitchDriver):
             if old["id"] not in wanted and old["id"] != 1:
                 await self.write([(T.PORT_VLAN, T.pack_group_mask(old["id"], []))], save=False)
         for gid, members in sorted(wanted.items()):
+            if gid == 1:
+                continue  # group 1 holds every port of no other group: it follows by itself
             await self.write([(T.PORT_VLAN, T.pack_group_mask(gid, members))], save=False)
         async with self.lock:
             await self._save()

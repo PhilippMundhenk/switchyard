@@ -268,17 +268,27 @@ async function vlan(host, S) {
   // TP-Link has one port-based and one 802.1Q mode, without basic/advanced
   const modes = v.modes || Object.keys(MODE_LABELS);
   const short = !modes.includes('dot1q_basic');
-  const label = (m) => (short ? { port_basic: 'Port-based', dot1q_advanced: '802.1Q' }[m] : null) || MODE_LABELS[m] || m;
+  const label = (m) => (short ? { port_basic: 'Port-based', dot1q_advanced: '802.1Q', mtu: 'MTU VLAN' }[m] : null) || MODE_LABELS[m] || m;
   const modeSel = select(modes.map((m) => [m, label(m)]), v.mode, { 'aria-label': 'VLAN mode', 'data-testid': 'vlan-mode' });
+  // MTU VLAN (TP-Link): every port talks to one uplink port only
+  const uplink = select(allPorts.map((p) => [p, `Port ${p}`]), v.mtu_uplink || 1, { 'aria-label': 'Uplink port', 'data-testid': 'vlan-uplink' });
+  const uplinkField = h('label', { class: 'inline', hidden: modeSel.value !== 'mtu' }, ' Uplink port ', uplink);
+  modeSel.addEventListener('change', () => { uplinkField.hidden = modeSel.value !== 'mtu'; });
   const modeBtn = h('button', { class: 'btn', 'data-testid': 'vlan-mode-apply' }, 'Change mode');
   modeBtn.addEventListener('click', async () => {
-    if (modeSel.value === v.mode) return;
+    const body = { mode: modeSel.value };
+    if (modeSel.value === 'mtu') body.uplink = Number(uplink.value);
+    if (modeSel.value === v.mode && !(v.mode === 'mtu' && body.uplink !== v.mtu_uplink)) return;
     if (!(await confirmDialog({ title: 'Change VLAN mode', message: 'Changing the VLAN mode erases all current VLAN settings on the switch.', confirmLabel: 'Change mode', danger: true }))) return;
-    await apply(modeBtn, () => put(`${dev(S.mac)}/vlan/mode`, { mode: modeSel.value }), 'VLAN mode changed.');
+    await apply(modeBtn, () => put(`${dev(S.mac)}/vlan/mode`, body), 'VLAN mode changed.');
   });
-  host.append(section('VLAN mode', h('div', { class: 'row' }, modeSel, modeBtn),
-    h('p', { class: 'muted' }, 'Basic modes are simpler on the switch itself; advanced modes allow overlapping groups and tagging.')));
+  const hints = short
+    ? [h('p', { class: 'muted' }, 'Port-based: each port belongs to exactly one group, and ports in the same group can talk to each other. 802.1Q: VLANs with tagged and untagged ports and a PVID per port. MTU VLAN: every port talks to the uplink port only.'),
+      v.pvid_reset_on_disable ? h('p', { class: 'muted', 'data-testid': 'pvid-hint' }, 'All PVIDs are 1 by default, and the switch resets them to 1 when 802.1Q is switched off.') : null]
+    : [h('p', { class: 'muted' }, 'Basic modes are simpler on the switch itself; advanced modes allow overlapping groups and tagging.')];
+  host.append(section('VLAN mode', h('div', { class: 'row' }, modeSel, uplinkField, modeBtn), ...hints));
   if (v.mode === 'disabled') return host.append(section('VLANs', h('p', { class: 'muted' }, 'VLANs are disabled. Pick a mode above to start.')));
+  if (v.mode === 'mtu') return host.append(section('MTU VLAN', h('p', { 'data-testid': 'mtu-info' }, `Every port talks to the uplink port ${v.mtu_uplink} only, not to each other.`)));
 
   const dirtyNote = h('span', { class: 'dirty', 'data-testid': 'dirty', hidden: true }, 'Unsaved changes');
   const errBox = h('div', { class: 'error', role: 'alert', 'data-testid': 'vlan-errors' });
@@ -298,12 +308,38 @@ async function vlan(host, S) {
         h('thead', {}, h('tr', {}, h('th', {}, 'Port'), ...model.map((g) => h('th', { 'data-testid': `vlan-row-${g.id}` }, `Group ${g.id}`)))),
         h('tbody', {}, ...allPorts.map((p) => h('tr', {}, portHead(S, p),
           ...model.map((g) => h('td', {}, h('button', { class: `cell ${g.members.has(p) ? 'M' : ''}`, 'aria-pressed': String(g.members.has(p)), 'aria-label': `Group ${g.id}, port ${p}`, 'data-testid': `cell-${g.id}-${p}`,
-            onclick: () => { if (g.members.has(p)) g.members.delete(p); else g.members.add(p); draw(); } }, g.members.has(p) ? '✓' : '–'))))))));
+            onclick: () => toggle(g, p) }, g.members.has(p) ? '✓' : '–'))))))));
     };
+    // TP-Link: a port is in exactly one group, and group 1 takes every port of no other group
+    const toggle = (g, p) => {
+      if (!v.exclusive_groups) { if (g.members.has(p)) g.members.delete(p); else g.members.add(p); return draw(); }
+      if (g.members.has(p)) {
+        if (g.id === 1) return toast('Put the port into another group to take it out of group 1.', 'error');
+        g.members.delete(p);
+        model.find((x) => x.id === 1)?.members.add(p);
+      } else {
+        for (const other of model) other.members.delete(p);
+        g.members.add(p);
+      }
+      return draw();
+    };
+    const limit = v.max_vlans || 8;
+    const addBtn = h('button', { class: 'btn', 'data-testid': 'vlan-add-group' }, 'Add group');
+    addBtn.addEventListener('click', () => {
+      const used = new Set(model.map((g) => g.id));
+      const id = Array.from({ length: limit }, (_, i) => i + 1).find((x) => !used.has(x));
+      if (!id) return toast(`This switch has at most ${limit} groups.`, 'error');
+      model.push({ id, members: new Set() });
+      model.sort((a, b) => a.id - b.id);
+      return draw();
+    });
     draw();
     applyBtn.addEventListener('click', () => apply(applyBtn, () => put(`${dev(S.mac)}/vlan/port-based`, { vlans: model.map((g) => ({ id: g.id, members: [...g.members].sort((a, b) => a - b) })) }), 'VLANs saved.'));
     discard.addEventListener('click', () => { model = original.map((g) => ({ id: g.id, members: new Set(g.members) })); draw(); });
-    return host.append(section('Port-based VLAN groups', matrixBox, h('div', { class: 'row' }, applyBtn, discard, dirtyNote)));
+    const groupHint = v.exclusive_groups
+      ? h('p', { class: 'muted' }, 'Each port is in exactly one group. Ports leave group 1 by joining another group; a group without ports is removed when applied. PVIDs exist in 802.1Q mode only.')
+      : null;
+    return host.append(section('Port-based VLAN groups', groupHint, matrixBox, h('div', { class: 'row' }, addBtn, applyBtn, discard, dirtyNote)));
   }
 
   // 802.1Q

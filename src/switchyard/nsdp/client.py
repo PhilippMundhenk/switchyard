@@ -430,7 +430,9 @@ class SwitchClient(SwitchDriver):
         if dhcp is False and self.address:
             self.address = ip
 
-    async def set_vlan_mode(self, mode: str) -> None:
+    async def set_vlan_mode(self, mode: str, uplink: int | None = None) -> None:
+        if mode == "mtu":
+            raise ValueError("This switch has no MTU VLAN mode.")
         await self.write([(T.VLAN_MODE, bytes([T.VLAN_MODES.index(mode)]))])
 
     async def set_port_vlans(self, vlans: list[dict]) -> None:
