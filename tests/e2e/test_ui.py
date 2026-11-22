@@ -105,13 +105,15 @@ def test_tplink_switch_asks_for_user_and_password(app):
     expect(app.locator(".toast").last).to_contain_text("Loop detection saved")
     assert api(app, "GET", f"/devices/{tp}/state").json()["loop_detection"] is True
     # mirroring per direction, and only the VLAN modes the switch has (#83)
+    # one source port with its direction (#86)
+    expect(app.get_by_test_id("mirror-dir-1")).to_have_count(0)
     app.get_by_test_id("mirror-dest").select_option("8")
-    app.get_by_test_id("mirror-dir-1").select_option("rx")
-    app.get_by_test_id("mirror-dir-2").select_option("tx")
+    app.get_by_test_id("mirror-source").select_option("2")
+    app.get_by_test_id("mirror-direction").select_option("tx")
     app.get_by_test_id("mirror-save").click()
     expect(app.locator(".toast").last).to_contain_text("Mirroring saved")
     m = api(app, "GET", f"/devices/{tp}/state").json()["mirror"]
-    assert m["ingress"] == [1] and m["egress"] == [2]
+    assert m["ingress"] == [] and m["egress"] == [2]
     open_tab(app, "vlan", tp)
     options = app.get_by_test_id("vlan-mode").locator("option").all_inner_texts()
     assert options == ["Disabled", "Port-based", "802.1Q"]
