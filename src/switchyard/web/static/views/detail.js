@@ -2,7 +2,7 @@
 import { dev, get } from '../api.js';
 import { clear, h } from '../util.js';
 import { showError } from '../ui.js';
-import { TABS } from './tabs.js';
+import { TABS, entrySection } from './tabs.js';
 
 export async function renderDetail(main, ctx, route) {
   const mac = route.mac;
@@ -32,7 +32,7 @@ export async function renderDetail(main, ctx, route) {
         await tab.render(host, S);
       } catch (err) {
         clear(host);
-        host.append(unreachable(err, () => { clear(host); S.reload().then(() => S.show()).catch((e) => { clear(host); host.append(unreachable(e, () => ctx.navigate(`#/switch/${encodeURIComponent(mac)}/${tab.id}`))); }); }));
+        host.append(unreachable(err, () => { clear(host); S.reload().then(() => S.show()).catch((e) => { clear(host); host.append(unreachable(e, () => window.location.reload())); }); }));
         showError(err);
       }
     },
@@ -50,8 +50,15 @@ export async function renderDetail(main, ctx, route) {
     title();
   } catch (err) {
     header.append(h('h1', {}, mac));
-    host.append(unreachable(err, () => ctx.navigate(`#/switch/${encodeURIComponent(mac)}/${tab.id}`)));
-    if (err.code !== 'not_found') showError(err);
+    host.append(unreachable(err, () => window.location.reload()));
+    if (err.code === 'not_found') return;
+    showError(err);
+    // the entry itself still works: a fixed address or removing it are often the way out
+    const device = await get(dev(mac)).catch(() => null);
+    if (device) {
+      S.state = { device, info: device.info || {} };
+      host.append(entrySection(device, S, () => window.location.reload()));
+    }
     return;
   }
   S.retitle = title;
@@ -67,6 +74,6 @@ function unreachable(err, retry) {
   return h('div', { class: 'card empty', 'data-testid': 'unreachable' },
     h('h2', {}, err.code === 'not_found' ? 'Unknown switch' : 'Switch not reachable'),
     h('p', {}, err.message),
-    err.code === 'not_found' ? null : h('p', { class: 'muted' }, 'Check power, cabling and that the server shares the switch\'s network segment. The switch may also be restarting.'),
+    err.code === 'not_found' ? null : h('p', { class: 'muted' }, 'Check power and cabling. If Switchyard runs in another network segment or a bridged container, set the switch\'s fixed address below. The switch may also be restarting.'),
     err.code === 'not_found' ? null : h('button', { class: 'btn primary', 'data-testid': 'retry', onclick: retry }, 'Try again'));
 }

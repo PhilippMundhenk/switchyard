@@ -722,3 +722,29 @@ def test_phone_port_lists_and_chip_editor(app):
     # back to desktop width: the table returns
     app.set_viewport_size({"width": 1280, "height": 900})
     expect(app.get_by_test_id("speed-1")).to_be_visible()
+
+
+def test_unreachable_switch_still_offers_its_fixed_address(page, tmp_path):
+    from .conftest import LiveServer
+
+    server = LiveServer(tmp_path / "live", demo=False)  # nothing answers outside demo mode
+    try:
+        page.set_default_timeout(20000)
+        page.goto(server.url)
+        page.get_by_test_id("login-password").fill(PASSWORD)
+        page.get_by_test_id("login-submit").click()
+        page.get_by_test_id("scan").wait_for()
+        page.server = server
+        assert api(page, "POST", "/devices", {"mac": MAC}).ok
+        page.goto(GOTO.format(url=server.url, mac=MAC, tab="maintenance"))
+        expect(page.get_by_test_id("unreachable")).to_contain_text("fixed address", timeout=30000)
+        page.get_by_test_id("meta-address").fill("127.0.0.1")
+        page.get_by_test_id("meta-save").click()  # saves, then loads the page again
+        for _ in range(50):
+            if api(page, "GET", f"/devices/{MAC}").json()["address"] == "127.0.0.1":
+                break
+            page.wait_for_timeout(100)
+        assert api(page, "GET", f"/devices/{MAC}").json()["address"] == "127.0.0.1"
+        expect(page.get_by_test_id("meta-address")).to_have_value("127.0.0.1", timeout=30000)
+    finally:
+        server.stop()

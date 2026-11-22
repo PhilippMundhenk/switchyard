@@ -57,7 +57,7 @@ function footer(session) {
   return h(
     'footer',
     {},
-    h('p', {}, 'Switchyard is an independent open-source project. It is not affiliated with, endorsed or supported by NETGEAR. Product names are used only to say what it works with.'),
+    h('p', {}, 'Switchyard is an independent open-source project. It is not affiliated with, endorsed or supported by NETGEAR or TP-Link. Product names are used only to say what it works with.'),
     h('p', {}, `Switchyard ${session.version}`),
   );
 }

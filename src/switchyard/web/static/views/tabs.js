@@ -657,23 +657,38 @@ async function firmware(host, S) {
 }
 
 // -------------------------------------------------------------- maintenance
-async function maintenance(host, S) {
-  const apply = applier(S);
-  const d = S.state.device;
+// Label, notes, fixed address, forget password, remove. Also shown when the switch does not
+// answer: setting its address is often the fix.
+export function entrySection(d, S, after) {
   const label = h('input', { type: 'text', value: d.label, maxlength: '60', 'data-testid': 'meta-label' });
   const notes = h('textarea', { rows: '3', maxlength: '2000', 'data-testid': 'meta-notes' }); notes.value = d.notes || '';
   const address = h('input', { type: 'text', value: d.address || '', placeholder: 'empty = find by broadcast', 'data-testid': 'meta-address' });
   const saveMeta = h('button', { class: 'btn primary', 'data-testid': 'meta-save' }, 'Save');
   saveMeta.addEventListener('click', () => run(saveMeta, async () => {
     await patch(dev(S.mac), { label: label.value, notes: notes.value, set_address: true, address: address.value.trim() || null });
-    toast('Saved.'); await S.reload(); S.retitle();
+    toast('Saved.'); await after('meta');
   }));
   const forget = h('button', { class: 'btn', 'data-testid': 'forget-password', disabled: !d.remembered }, 'Forget stored password');
-  forget.addEventListener('click', () => run(forget, async () => { await patch(dev(S.mac), { forget_password: true }); toast('Password forgotten.'); await S.reload(); await S.show(); }));
+  forget.addEventListener('click', () => run(forget, async () => { await patch(dev(S.mac), { forget_password: true }); toast('Password forgotten.'); await after('password'); }));
   const remove = h('button', { class: 'btn danger', 'data-testid': 'remove-switch' }, 'Remove from Switchyard');
   remove.addEventListener('click', async () => {
     if (!(await confirmDialog({ title: 'Remove switch', message: `Remove ${S.name} from Switchyard? The switch itself is not changed.`, confirmLabel: 'Remove', danger: true }))) return;
     await run(remove, async () => { await del(dev(S.mac)); S.ctx.navigate('#/'); });
+  });
+  const hint = d.unicast === false
+    ? 'This switch answers only in its own network segment: a fixed address does not help.'
+    : 'Set this when the switch is on another subnet, or Switchyard runs in a bridged container; Switchyard then talks to it directly.';
+  return section('This entry', field('Label', label), field('Notes', notes), field('Fixed address', address, hint),
+    h('div', { class: 'row' }, saveMeta, forget, remove));
+}
+
+async function maintenance(host, S) {
+  const apply = applier(S);
+  const d = S.state.device;
+  const entry = entrySection(d, S, async (what) => {
+    await S.reload();
+    if (what === 'meta') S.retitle();
+    else await S.show();
   });
 
   const newPw = h('input', { type: 'password', maxlength: '20', autocomplete: 'new-password', 'data-testid': 'new-switch-password' });
@@ -780,8 +795,7 @@ async function maintenance(host, S) {
   copyBtn.addEventListener('click', () => copyText(scanText, 'switchyard-diagnostics.txt'));
 
   host.append(
-    section('This entry', field('Label', label), field('Notes', notes), field('Fixed address', address, 'Set this for a switch on another subnet; Switchyard then talks to it directly.'),
-      h('div', { class: 'row' }, saveMeta, forget, remove)),
+    entry,
     section('Automatic backups', h('p', { class: 'muted' }, 'Stored on the server in the data folder. Backups contain the configuration, never passwords.'),
       h('div', { class: 'table-wrap' }, h('table', { class: 'backups' }, h('thead', {}, h('tr', {}, h('th', {}, 'Created'), h('th', { class: 'num' }, 'Size'), h('th', {}, ''))), backupRows)), h('p', {}, backupNow)),
     section('Diagnostics', h('p', { class: 'muted' }, 'Reads each known setting once and shows which ones this switch answers, with the raw bytes. Nothing is changed. Paste the result into a hardware report to help support more models.'),
