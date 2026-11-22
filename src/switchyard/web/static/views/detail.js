@@ -14,6 +14,9 @@ export async function renderDetail(main, ctx, route) {
   const picker = h('select', { class: 'tab-select', 'aria-label': 'Section', 'data-testid': 'tab-select' },
     ...TABS.map((t) => h('option', { value: t.id, selected: t.id === tab.id }, t.label)));
   picker.addEventListener('change', () => ctx.navigate(`#/switch/${encodeURIComponent(mac)}/${picker.value}`));
+  const busy = h('span', { class: 'tag busy', role: 'status', 'data-testid': 'refreshing', hidden: true }, 'Updating…');
+  let left = false;
+  ctx.onCleanup(() => { left = true; });
   main.append(h('p', { class: 'back' }, h('a', { href: '#/' }, '← All switches')), header, tabs, picker, host);
 
   const S = {
@@ -22,9 +25,26 @@ export async function renderDetail(main, ctx, route) {
       const d = this.state && this.state.device;
       return d ? d.label || d.info.name || d.info.model || mac : mac;
     },
+    tab,
     async reload() {
       this.state = await get(`${dev(mac)}/state`);
       return this.state;
+    },
+    // Re-read some sections (all when none given) without blocking the page, then redraw.
+    refresh(parts) {
+      if (left) return Promise.resolve();
+      busy.hidden = false;
+      const query = parts && parts.length ? `?parts=${parts.join(',')}` : '';
+      const done = get(`${dev(mac)}/state${query}`)
+        .then((data) => {
+          if (left) return;
+          if (query) { const { partial, ...rest } = data; Object.assign(this.state, rest); } else this.state = data;
+          this.retitle();
+          return this.show();
+        })
+        .catch((err) => { if (!left) showError(err); })
+        .finally(() => { busy.hidden = true; });
+      return done;
     },
     async show() {
       clear(host);
@@ -42,7 +62,7 @@ export async function renderDetail(main, ctx, route) {
     clear(header);
     const d = S.state.device;
     header.append(h('h1', { 'data-testid': 'switch-title' }, S.name),
-      h('span', { class: 'tag' }, `${S.state.info.model || '?'} · ${mac}`));
+      h('span', { class: 'tag' }, `${S.state.info.model || '?'} · ${mac}`), busy);
   }
 
   try {

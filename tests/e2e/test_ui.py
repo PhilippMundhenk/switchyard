@@ -748,3 +748,14 @@ def test_unreachable_switch_still_offers_its_fixed_address(page, tmp_path):
         expect(page.get_by_test_id("meta-address")).to_have_value("127.0.0.1", timeout=30000)
     finally:
         server.stop()
+
+
+def test_change_refreshes_only_its_section_in_the_background(app):
+    add_switch(app, MAC, "password")
+    open_tab(app, "features")
+    app.get_by_test_id("loop-enabled").check()
+    with app.expect_request(lambda r: "/state?parts=features" in r.url):
+        app.get_by_test_id("loop-save").click()
+    expect(app.locator(".toast").last).to_contain_text("Loop detection saved")
+    expect(app.get_by_test_id("refreshing")).to_be_hidden()
+    expect(app.get_by_test_id("loop-enabled")).to_be_checked()

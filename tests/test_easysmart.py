@@ -531,3 +531,12 @@ async def test_qos_modes_offered(tptransport, tpsim):
     assert qos["modes"] == ["port", "dot1p", "dscp"]
     await c.set_qos(mode="dscp")
     assert (await c.read_qos())["mode"] == "dscp"
+
+
+async def test_read_part(tptransport, tpsim):
+    c = client_for(tptransport, MAC_A)
+    assert (await c.read_part("vlan"))["mode"] == "disabled"
+    assert "loop_detection" in await c.read_part("features")
+    assert (await c.read_part("lag"))["groups"] == 2
+    with pytest.raises(ValueError):
+        await c.read_part("nonsense")

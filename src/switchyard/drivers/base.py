@@ -36,6 +36,18 @@ class Unreachable(Exception):
     """The switch did not answer."""
 
 
+# state section -> driver method; "features" returns mirror, igmp, loop_detection (and led)
+PARTS = {
+    "info": "read_info",
+    "ports": "read_ports",
+    "vlan": "read_vlan",
+    "qos": "read_qos",
+    "lag": "read_lag",
+    "port_admin": "read_port_admin",
+    "features": "read_features",
+}
+
+
 class SwitchDriver(ABC):
     """One switch. Every method may raise Unreachable, AuthError or SwitchError."""
 
@@ -70,6 +82,13 @@ class SwitchDriver(ABC):
 
     async def read_port_admin(self) -> dict | None:
         return None
+
+    async def read_part(self, part: str):
+        """One section of read_state, to refresh only what a change touched."""
+        method = PARTS.get(part)
+        if method is None:
+            raise ValueError(f"unknown part {part}")
+        return await getattr(self, method)()
 
     async def scan_tags(self, tags: list[int], timeout: float = 0.8) -> list[dict]:
         self._unsupported("the settings scan")
