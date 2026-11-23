@@ -23,6 +23,8 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - A bridged Docker network with a published port works for switches added by IP address; host networking is only needed for the search (#61).
 
 ### Fixed
+- TP-Link: storm control per port, with the rate and the frame types of each port, like the switch's own page (#111).
+- TP-Link: port LEDs on and off (#113); the overview shows the hardware version (#112); the MTU VLAN uplink field is aligned (#110).
 - TP-Link: a switch that drops its session key is reached again with a new key, instead of staying 'not reachable' until a restart (#95).
 - TP-Link: the VLAN page no longer offers 'Disabled' (these switches cannot switch VLANs off; the default is port-based with every port in group 1) and says so (#96).
 - TP-Link VLAN page: port-based groups can be added (a port is in one group; group 1 holds the rest), MTU VLAN mode with its uplink port, hints on PVIDs (#87).

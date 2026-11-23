@@ -113,6 +113,13 @@ class Dot1qBody(BaseModel):
     pvid: PortMap = {}
 
 
+class StormPort(BaseModel):
+    rate: int = 0  # rate code; 0 = storm control off on this port
+    unknown_unicast: bool = True
+    multicast: bool = True
+    broadcast: bool = True
+
+
 class QosBody(BaseModel):
     mode: Literal["port", "dot1p", "dscp"] | None = None
     priorities: dict[int, Priority] | None = None
@@ -122,6 +129,8 @@ class QosBody(BaseModel):
     storm_rates: PortMap | None = None
     # TP-Link: which frames storm control counts
     storm_types: dict[Literal["unknown_unicast", "multicast", "broadcast"], bool] | None = None
+    # TP-Link: storm control per port (rate and frame types)
+    storm_ports: dict[int, StormPort] | None = None
 
 
 class MirrorBody(BaseModel):
@@ -727,7 +736,8 @@ def create_app(config: Config) -> FastAPI:
     async def set_qos(mac: str, body: QosBody):
         client = manager().client(mac)
         codes = getattr(client, "rate_codes", T.RATE_CODES)  # TP-Link has its own table
-        for table in (body.ingress, body.egress, body.storm_rates):
+        storm_codes = {p: s.rate for p, s in (body.storm_ports or {}).items()}
+        for table in (body.ingress, body.egress, body.storm_rates, storm_codes):
             if table and any(code not in codes for code in table.values()):
                 raise ValueError("Unknown rate limit.")
         await client.set_qos(**body.model_dump())

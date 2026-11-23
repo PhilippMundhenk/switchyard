@@ -421,28 +421,33 @@ async function qos(host, S) {
   const modeLabels = { dot1p: '802.1p based', port: 'Port based', dscp: 'DSCP/802.1p based' };
   const mode = select((q.modes || ['dot1p', 'port']).map((m) => [m, modeLabels[m] || m]), q.mode, { 'data-testid': 'qos-mode' });
   const prio = {}; const ingress = {}; const egress = {}; const storm = {};
-  const table = h('table', { class: 'controls' }, h('thead', {}, h('tr', {}, ...['Port', 'Priority', 'Ingress limit', 'Egress limit', 'Storm control rate'].map((t) => h('th', {}, t)))),
+  // TP-Link keeps storm control per port: rate and frame types (#111)
+  const perPort = Boolean(q.storm_ports);
+  const typeNames = { unknown_unicast: 'Unknown unicast', multicast: 'Multicast', broadcast: 'Broadcast' };
+  const stormTypes = {};
+  const table = h('table', { class: 'controls' }, h('thead', {}, h('tr', {}, ...['Port', 'Priority', 'Ingress limit', 'Egress limit', ...(perPort ? [] : ['Storm control rate'])].map((t) => h('th', {}, t)))),
     h('tbody', {}, ...allPorts.map((p) => {
       prio[p] = select(['high', 'medium', 'normal', 'low'].map((x) => [x, x[0].toUpperCase() + x.slice(1)]), q.priorities[p] || 'normal', { 'aria-label': `Priority of port ${p}`, 'data-testid': `prio-${p}` });
       ingress[p] = select(rates, q.ingress[p] ?? 0, { 'aria-label': `Ingress limit of port ${p}`, 'data-testid': `ingress-${p}` });
       egress[p] = select(rates, q.egress[p] ?? 0, { 'aria-label': `Egress limit of port ${p}`, 'data-testid': `egress-${p}` });
-      storm[p] = select(rates, q.storm_rates[p] ?? 0, { 'aria-label': `Storm control rate of port ${p}`, 'data-testid': `storm-${p}` });
-      return h('tr', {}, h('td', {}, String(p)), h('td', {}, prio[p]), h('td', {}, ingress[p]), h('td', {}, egress[p]), h('td', {}, storm[p]));
+      storm[p] = select(rates, perPort ? (q.storm_ports[p]?.rate ?? 0) : (q.storm_rates[p] ?? 0), { 'aria-label': `Storm control rate of port ${p}`, 'data-testid': `storm-${p}` });
+      if (perPort) stormTypes[p] = Object.fromEntries(Object.keys(typeNames).map((k) => [k, h('input', { type: 'checkbox', checked: q.storm_ports[p] && q.storm_ports[p].rate ? Boolean(q.storm_ports[p][k]) : true, 'aria-label': `${typeNames[k]} on port ${p}`, 'data-testid': `storm-${k}-${p}` })]));
+      return h('tr', {}, h('td', {}, String(p)), h('td', {}, prio[p]), h('td', {}, ingress[p]), h('td', {}, egress[p]), perPort ? null : h('td', {}, storm[p]));
     })));
+  const stormTable = perPort ? stackable(h('table', { class: 'controls', 'data-testid': 'storm-table' },
+    h('thead', {}, h('tr', {}, ...['Port', 'Rate (no limit = off)', ...Object.values(typeNames)].map((t) => h('th', {}, t)))),
+    h('tbody', {}, ...allPorts.map((p) => h('tr', {}, h('td', {}, String(p)), h('td', {}, storm[p]), ...Object.keys(typeNames).map((k) => h('td', {}, stormTypes[p][k]))))))) : null;
   const stormOn = h('input', { type: 'checkbox', checked: Boolean(q.storm_control), disabled: q.storm_control === null, 'data-testid': 'storm-enabled' });
   let editor = null;
-  const sync = () => { for (const p of allPorts) { prio[p].disabled = mode.value !== 'port'; storm[p].disabled = !stormOn.checked; } if (editor) editor.redraw(); };
+  const sync = () => { for (const p of allPorts) { prio[p].disabled = mode.value !== 'port'; if (!perPort) storm[p].disabled = !stormOn.checked; } if (editor) editor.redraw(); };
   if (isPhone()) {
     editor = portChipEditor(S, allPorts, [
       { key: 'prio', label: 'Priority', controls: prio, neutral: (c) => c.value === 'normal' },
       { key: 'ingress', label: 'Ingress limit', short: 'in', controls: ingress },
       { key: 'egress', label: 'Egress limit', short: 'out', controls: egress },
-      { key: 'storm', label: 'Storm control rate', short: 'storm', controls: storm },
+      ...(perPort ? [] : [{ key: 'storm', label: 'Storm control rate', short: 'storm', controls: storm }]),
     ]);
   }
-  // TP-Link: which frames storm control counts
-  const typeNames = { unknown_unicast: 'unknown unicast', multicast: 'multicast', broadcast: 'broadcast' };
-  const types = q.storm_types ? Object.fromEntries(Object.keys(typeNames).map((k) => [k, h('input', { type: 'checkbox', checked: Boolean(q.storm_types[k]), 'data-testid': `storm-type-${k}` })])) : null;
   mode.addEventListener('change', sync); stormOn.addEventListener('change', sync); sync();
   const save = h('button', { class: 'btn primary', 'data-testid': 'qos-save' }, 'Apply');
   save.addEventListener('click', async () => {
@@ -453,19 +458,23 @@ async function qos(host, S) {
     }
     if (mode.value === 'port') body.priorities = Object.fromEntries(allPorts.map((p) => [p, prio[p].value]));
     for (const p of allPorts) { body.ingress[p] = Number(ingress[p].value); body.egress[p] = Number(egress[p].value); }
-    if (q.storm_control !== null) {
+    if (perPort) {
+      body.storm_ports = Object.fromEntries(allPorts.map((p) => [p, { rate: Number(storm[p].value), ...Object.fromEntries(Object.entries(stormTypes[p]).map(([k, box]) => [k, box.checked])) }]));
+      const bad = allPorts.find((p) => body.storm_ports[p].rate && !Object.keys(typeNames).some((k) => body.storm_ports[p][k]));
+      if (bad) return toast(`Port ${bad}: choose at least one frame type for storm control.`, 'error');
+    } else if (q.storm_control !== null) {
       body.storm_control = stormOn.checked;
       if (stormOn.checked) body.storm_rates = Object.fromEntries(allPorts.map((p) => [p, Number(storm[p].value)]));
-      if (stormOn.checked && types) {
-        body.storm_types = Object.fromEntries(Object.entries(types).map(([k, box]) => [k, box.checked]));
-        if (!Object.values(body.storm_types).some(Boolean)) return toast('Choose at least one frame type for storm control.', 'error');
-      }
     }
     await apply(save, () => put(`${dev(S.mac)}/qos`, body), 'QoS settings saved.');
   });
   host.append(section('Quality of service', field('QoS mode', mode, 'Port priorities can be set in port-based mode only.'),
-    h('label', { class: 'check' }, stormOn, types ? ' Storm control' : ' Broadcast storm control'),
-    types ? h('div', { class: 'checks', 'data-testid': 'storm-types' }, h('span', { class: 'muted' }, 'Counts:'), ...Object.entries(types).map(([k, box]) => h('label', {}, box, ` ${typeNames[k]}`))) : null, editor ? editor.element : h('div', { class: 'table-wrap' }, table), h('p', {}, save)));
+    perPort ? null : h('label', { class: 'check' }, stormOn, ' Broadcast storm control'),
+    editor ? editor.element : h('div', { class: 'table-wrap' }, table),
+    perPort ? h('h4', {}, 'Storm control') : null,
+    perPort ? h('p', { class: 'muted' }, 'Per port: a rate turns storm control on for the chosen frame types; "no limit" turns it off. A port has either an ingress limit or storm control.') : null,
+    perPort ? h('div', { class: 'table-wrap' }, stormTable) : null,
+    h('p', {}, save)));
 }
 
 // ---------------------------------------------------------------- features

@@ -117,9 +117,17 @@ def test_tplink_switch_asks_for_user_and_password(app):
     open_tab(app, "vlan", tp)
     options = app.get_by_test_id("vlan-mode").locator("option").all_inner_texts()
     assert options == ["Port-based", "802.1Q", "MTU VLAN"]
-    # storm control frame types (#88)
+    # storm control per port: rate and frame types (#88, #111)
     open_tab(app, "qos", tp)
-    expect(app.get_by_test_id("storm-types")).to_contain_text("multicast")
+    expect(app.get_by_test_id("storm-table")).to_contain_text("Multicast")
+    expect(app.get_by_test_id("storm-enabled")).to_have_count(0)
+    app.get_by_test_id("storm-2").select_option("3")
+    app.get_by_test_id("storm-unknown_unicast-2").uncheck()
+    app.get_by_test_id("storm-multicast-2").uncheck()
+    app.get_by_test_id("qos-save").click()
+    expect(app.locator(".toast").last).to_contain_text("QoS settings saved")
+    sp = api(app, "GET", f"/devices/{tp}/state").json()["qos"]["storm_ports"]["2"]
+    assert sp == {"rate": 3, "unknown_unicast": False, "multicast": False, "broadcast": True}
     open_tab(app, "ports", tp)
     expect(app.get_by_test_id("stat-1")).to_contain_text("pkts")
     # what the protocol cannot do is not offered (#89)
