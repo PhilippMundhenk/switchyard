@@ -665,3 +665,25 @@ async def test_session_loss_with_slow_key_exchange_recovers(tptransport, tpsim):
     b.ignore_keys = False
     b.key_delay = 0
     assert (await c.read_info())["mac"] == MAC_B and c.generation == "B"
+
+
+async def test_storm_control_per_port(tptransport, tpsim):
+    a = tpsim.switches[0]
+    c = client_for(tptransport, MAC_A)
+    await c.set_qos(
+        storm_ports={
+            2: {"rate": 3, "unknown_unicast": False, "multicast": False, "broadcast": True},
+            3: {"rate": 2},
+        }
+    )
+    assert a.config["storm"][2] == [0, 0, 1, 2048] and a.config["storm"][3] == [1, 1, 1, 1024]
+    sp = (await c.read_qos())["storm_ports"]
+    assert sp[2] == {"rate": 3, "unknown_unicast": False, "multicast": False, "broadcast": True}
+    assert sp[4]["rate"] == 0
+    with pytest.raises(ValueError, match="Port 2: choose at least one"):
+        none = {"unknown_unicast": False, "multicast": False, "broadcast": False}
+        await c.set_qos(storm_ports={2: {"rate": 3, **none}})
+    with pytest.raises(ValueError, match="does not exist"):
+        await c.set_qos(storm_ports={9: {"rate": 0}})
+    await c.set_qos(storm_ports={2: {"rate": 0}, 3: {"rate": 0}})
+    assert a.config["storm"][2] == [0, 0, 0, 0]

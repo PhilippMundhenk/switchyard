@@ -448,6 +448,18 @@ class EasySmartClient(SwitchDriver):
             "storm_rates": {r["port"]: self._code(r["kbps"]) for r in storm_rows},
             # frame types storm control counts (the same for every port in Switchyard)
             "storm_types": _storm_types(storm_rows) if storm else None,
+            # per port, as the switch keeps it: rate (0 = off) and the frame types (#111)
+            "storm_ports": {
+                r["port"]: {
+                    "rate": self._code(r["kbps"]) if r["enabled"] else 0,
+                    "unknown_unicast": r["unknown_unicast"],
+                    "multicast": r["multicast"],
+                    "broadcast": r["broadcast"],
+                }
+                for r in storm_rows
+            }
+            if storm
+            else None,
             "modes": list(T.QOS_MODES.values()),
         }
 
@@ -688,8 +700,26 @@ class EasySmartClient(SwitchDriver):
         storm_control: bool | None = None,
         storm_rates: dict[int, int] | None = None,
         storm_types: dict[str, bool] | None = None,
+        storm_ports: dict[int, dict] | None = None,
     ) -> None:
         """Rates here are codes of ``RATE_CODES`` like on NETGEAR; the switch takes kbit/s."""
+        if storm_ports:
+            count = await self._port_count()
+            writes = []
+            for p, cfg in sorted((int(k), v) for k, v in storm_ports.items()):
+                if not 1 <= p <= count:
+                    raise ValueError(f"Port {p} does not exist.")
+                kbps = self.rate_kbps(cfg.get("rate", 0))
+                flags = {
+                    "unicast": cfg.get("unknown_unicast", True),
+                    "multicast": cfg.get("multicast", True),
+                    "broadcast": cfg.get("broadcast", True),
+                }
+                if kbps and not any(flags.values()):
+                    raise ValueError(f"Port {p}: choose at least one frame type for storm control.")
+                writes.append((p, T.pack_storm(p, kbps, **flags)))
+            for _, value in writes:
+                await self.write([(T.STORM, value)], save=False)
         modes = {v: k for k, v in T.QOS_MODES.items()}
         prio = {v: k for k, v in T.PRIORITIES.items()}
         if mode is not None:
