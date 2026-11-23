@@ -120,6 +120,21 @@ class StormPort(BaseModel):
     broadcast: bool = True
 
 
+class PoeRecovery(BaseModel):
+    enabled: bool | None = None
+    ip: str | None = Field(None, max_length=15)
+    startup_delay: int | None = Field(None, ge=0, le=65535)
+    interval: int | None = Field(None, ge=1, le=65535)
+    threshold: int | None = Field(None, ge=1, le=65535)
+    break_time: int | None = Field(None, ge=0, le=65535)
+
+
+class PoeBody(BaseModel):
+    recovery_enabled: bool | None = None
+    recovery: dict[int, PoeRecovery] | None = None
+    extend: dict[int, bool] | None = None
+
+
 class QosBody(BaseModel):
     mode: Literal["port", "dot1p", "dscp"] | None = None
     priorities: dict[int, Priority] | None = None
@@ -773,6 +788,19 @@ def create_app(config: Config) -> FastAPI:
     async def set_igmp(mac: str, body: IgmpBody):
         await manager().client(mac).set_igmp(**body.model_dump(exclude_none=True))
         return ok("IGMP snooping saved.")
+
+    @api.put("/devices/{mac}/poe")
+    async def set_poe(mac: str, body: PoeBody):
+        """PoE auto recovery and extend mode (TP-Link)."""
+        settings = {
+            "recovery_enabled": body.recovery_enabled,
+            "recovery": {
+                p: r.model_dump(exclude_none=True) for p, r in (body.recovery or {}).items()
+            },
+            "extend": body.extend or {},
+        }
+        await manager().client(mac).set_poe(settings)
+        return ok("PoE settings saved.")
 
     @api.put("/devices/{mac}/led")
     async def set_led(mac: str, body: FlagBody):

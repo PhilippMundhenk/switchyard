@@ -99,6 +99,24 @@ class SimEasySmart:
             "mirror": [0, 0, [], []],
             "lags": {g: [] for g in range(1, self.lag_groups + 1)},
             "port": {p: {"enabled": True, "speed": 1, "flow": False} for p in all_ports},
+            # PoE on ports 1-4 (TL-SG108PE): auto recovery and extend mode
+            "poe_recovery_on": False,
+            "poe_recovery": {
+                p: {
+                    "port": p,
+                    "ip": "0.0.0.0",
+                    "startup_delay": 60,
+                    "interval": 60,
+                    "threshold": 5,
+                    "break_time": 15,
+                    "enabled": False,
+                    "_rest": "00" * 6,
+                }
+                for p in range(1, 5)
+            }
+            if self.model.endswith("PE")
+            else {},
+            "poe_extend": dict.fromkeys(range(1, 5), False) if self.model.endswith("PE") else {},
             "username": self.username,
             "password": self.password,
         }
@@ -203,6 +221,15 @@ class SimEasySmart:
                 )
                 for p, s in sorted(c["storm"].items())
             ]
+        if tag in (T.POE_RECOVERY, T.POE_GLOBAL_RECOVERY, T.POE_EXTEND) and c["poe_recovery"]:
+            # like the hardware: no answer for the global switch or extend mode while on
+            if tag == T.POE_GLOBAL_RECOVERY:
+                return None if c["poe_recovery_on"] else [(tag, b"\x00")]
+            if tag == T.POE_EXTEND:
+                if any(c["poe_extend"].values()):
+                    return None
+                return [(tag, bytes([p, 0])) for p in sorted(c["poe_extend"])]
+            return [(tag, T.pack_poe_recovery(r)) for _, r in sorted(c["poe_recovery"].items())]
         if tag == T.MTU_VLAN:
             return [(tag, bytes([c["mtu_vlan"], c["mtu_uplink"]]))]
         if tag == T.PORT_VLAN_ENABLED:
@@ -331,6 +358,17 @@ class SimEasySmart:
                 c["ingress"][s["port"]] = 0
             else:
                 c["storm"][s["port"]] = [0, 0, 0, 0]
+        elif tag == T.POE_GLOBAL_RECOVERY and c["poe_recovery"]:
+            c["poe_recovery_on"] = v[0] == 1
+        elif tag == T.POE_RECOVERY and c["poe_recovery"]:
+            row = T.poe_recovery(v)
+            if row["port"] not in c["poe_recovery"]:
+                return 7503
+            c["poe_recovery"][row["port"]] = row
+        elif tag == T.POE_EXTEND and c["poe_extend"]:
+            if v[0] not in c["poe_extend"]:
+                return 7503
+            c["poe_extend"][v[0]] = v[1] == 1
         elif tag == T.MTU_VLAN:
             if not 1 <= v[1] <= self.ports:
                 return 7503

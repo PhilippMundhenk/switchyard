@@ -529,11 +529,81 @@ class EasySmartClient(SwitchDriver):
         state.update(
             rate_codes=self.rate_codes,
             admin_speeds={0: "auto", 1: "disabled", **{c: T.SPEEDS[c][0] for c in range(2, 7)}},
-            poe=None,
+            poe=await self.read_poe(),
             # no protocol layout is known for these on Easy Smart switches
             capabilities={"firmware_upgrade": False, "cable_test": False},
         )
         return state
+
+    async def _peek(self, tag: int) -> Packet | None:
+        """Read a setting the switch sometimes does not answer (not remembered as unsupported):
+        the TL-SG108PE stays silent on its PoE recovery and extend settings while they are on."""
+        try:
+            reply = await self._get(tag, timeout=min(self.transport.timeout, 0.8), retries=1)
+        except (Unreachable, EasySmartError):
+            return None
+        return reply if reply.has(tag) else None
+
+    async def read_poe(self) -> dict | None:
+        """PoE auto recovery and extend mode (#114); None on switches without PoE."""
+        async with self.lock:
+            recovery = await self._read(T.POE_RECOVERY)
+            if recovery is None:
+                return None
+            rows = [T.poe_recovery(v) for v in recovery.values(T.POE_RECOVERY) if len(v) >= 20]
+            glob = await self._peek(T.POE_GLOBAL_RECOVERY)
+            extend = await self._peek(T.POE_EXTEND)
+        glob_value = glob.first(T.POE_GLOBAL_RECOVERY) if glob else None
+        extend_rows = extend.values(T.POE_EXTEND) if extend else []
+        ports = [r["port"] for r in rows]
+        return {
+            "ports": ports,
+            # None: the switch did not answer, which it does while the setting is on
+            "recovery_enabled": (glob_value[0] == 1) if glob_value else None,
+            "recovery": {r["port"]: r for r in rows},
+            "extend": {
+                p: next((v[1] == 1 for v in extend_rows if len(v) >= 2 and v[0] == p), None)
+                for p in ports
+            },
+        }
+
+    async def set_poe(self, settings: dict) -> None:
+        """``{"recovery_enabled": bool, "recovery": {port: {...}}, "extend": {port: bool}}``.
+
+        The per-port recovery layout is confirmed; writing the global switch and extend mode
+        (``01``) follows from their 'off' values only and still needs confirming (#114).
+        """
+        current = await self.read_poe()
+        if current is None:
+            self._unsupported("PoE settings")
+        tlvs = []
+        if settings.get("recovery_enabled") is not None:
+            tlvs.append((T.POE_GLOBAL_RECOVERY, bytes([1 if settings["recovery_enabled"] else 0])))
+        for port, cfg in sorted((int(k), v) for k, v in (settings.get("recovery") or {}).items()):
+            if port not in current["recovery"]:
+                raise ValueError(f"Port {port} has no PoE.")
+            row = {**current["recovery"][port], **cfg, "port": port}
+            ipaddress.IPv4Address(row["ip"])  # raises ValueError for a bad address
+            for key, low, high in (
+                ("startup_delay", 0, 65535),
+                ("interval", 1, 65535),
+                ("threshold", 1, 65535),
+                ("break_time", 0, 65535),
+            ):
+                if not low <= int(row[key]) <= high:
+                    name = key.replace("_", " ")
+                    raise ValueError(f"Port {port}: {name} must be {low} to {high}.")
+            if row["enabled"] and row["ip"] == "0.0.0.0":
+                raise ValueError(f"Port {port}: auto recovery needs an address to ping.")
+            tlvs.append((T.POE_RECOVERY, T.pack_poe_recovery(row)))
+        for port, on in sorted((int(k), v) for k, v in (settings.get("extend") or {}).items()):
+            if port not in current["recovery"]:
+                raise ValueError(f"Port {port} has no PoE.")
+            tlvs.append((T.POE_EXTEND, bytes([port, 1 if on else 0])))
+        for tlv in tlvs:  # one setting per write, like the vendor tool
+            await self.write([tlv], save=False)
+        async with self.lock:
+            await self._save()
 
     async def read_part(self, part: str):
         if part in ("vlan", "qos", "lag", "features"):

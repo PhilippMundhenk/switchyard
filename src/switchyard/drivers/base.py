@@ -45,6 +45,7 @@ PARTS = {
     "lag": "read_lag",
     "port_admin": "read_port_admin",
     "features": "read_features",
+    "poe": "read_poe",
 }
 
 
@@ -81,6 +82,9 @@ class SwitchDriver(ABC):
     async def read_state(self) -> dict: ...
 
     async def read_port_admin(self) -> dict | None:
+        return None
+
+    async def read_poe(self) -> dict | None:
         return None
 
     async def read_part(self, part: str):

@@ -840,3 +840,23 @@ def test_tplink_leds_off_and_on(app):
     app.get_by_test_id("led-save").click()
     expect(app.locator(".toast").last).to_contain_text("Port LEDs saved")
     assert api(app, "GET", f"/devices/{tp}/state").json()["led"] is False
+
+
+def test_tplink_poe_auto_recovery(app):
+    tp = "50:c7:bf:5e:00:01"
+    add_switch(app, tp)
+    api(app, "POST", f"/devices/{tp}/login", {"password": "admin", "username": "admin"})
+    open_tab(app, "poe", tp)
+    expect(app.get_by_test_id("poe-table")).to_be_visible()
+    app.get_by_test_id("poe-rec-2").check()
+    app.get_by_test_id("poe-save").click()
+    expect(app.locator(".toast").last).to_contain_text("enter the address")
+    app.get_by_test_id("poe-ip-2").fill("192.168.0.111")
+    app.get_by_test_id("poe-save").click()
+    expect(app.locator(".toast").last).to_contain_text("PoE settings saved")
+    rec = api(app, "GET", f"/devices/{tp}/state").json()["poe"]["recovery"]["2"]
+    assert rec["enabled"] and rec["ip"] == "192.168.0.111"
+    open_tab(app, "poe")  # the NETGEAR demo switch has no PoE settings
+    add_switch(app, MAC)
+    open_tab(app, "poe")
+    expect(app.get_by_test_id("unsupported")).to_contain_text("PoE")

@@ -30,7 +30,7 @@ configure them.
 | GS105E (first generation), other GS108E revisions | expected to work, reports welcome |
 | GS105E v2, GS110EMX, JGS516PE, JGS524PE, XS-series | may work, reports welcome |
 | Newer firmware with the Plus Utility turned off | needs a setting change, see [troubleshooting](docs/TROUBLESHOOTING.md) |
-| TP-Link TL-SG105E, TL-SG108E, TL-SG108PE, TL-SG1016DE, TL-SG1024DE | new, tested against the simulator only; a TL-SG108PE test is under way, see [HARDWARE.md](docs/HARDWARE.md#tp-link-easy-smart). Same network segment only. PoE settings not yet |
+| TP-Link TL-SG105E, TL-SG108E, TL-SG108PE, TL-SG1016DE, TL-SG1024DE | new, tested against the simulator only; a TL-SG108PE test is under way, see [HARDWARE.md](docs/HARDWARE.md#tp-link-easy-smart). Same network segment only. PoE: auto recovery and extend mode, no power readings yet |
 
 ## Getting started
 
