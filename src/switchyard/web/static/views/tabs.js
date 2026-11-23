@@ -124,7 +124,7 @@ async function overview(host, S) {
     section('Ports', panel, note),
     section('Identity', h('dl', { class: 'kv', 'data-testid': 'identity' },
       ...[['Model', info.model || '–'], ['Name', info.name || '–'], ['MAC address', info.mac], ['Serial number', info.serial || '–'],
-        ['Firmware', info.firmware || '–'], ['IP address', info.ip ? `${info.ip} ${info.dhcp ? '(DHCP)' : '(static)'}` : '–'],
+        ['Firmware', info.firmware || '–'], ...(info.hardware ? [['Hardware', info.hardware]] : []), ['IP address', info.ip ? `${info.ip} ${info.dhcp ? '(DHCP)' : '(static)'}` : '–'],
         ['Subnet mask', info.netmask || '–'], ['Gateway', info.gateway || '–'], ['Ports', info.ports], ['Password scheme', info.password_mode]]
         .flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v === null || v === undefined || v === '' ? '–' : String(v))]))),
   );
@@ -272,7 +272,7 @@ async function vlan(host, S) {
   const modeSel = select(modes.map((m) => [m, label(m)]), v.mode, { 'aria-label': 'VLAN mode', 'data-testid': 'vlan-mode' });
   // MTU VLAN (TP-Link): every port talks to one uplink port only
   const uplink = select(allPorts.map((p) => [p, `Port ${p}`]), v.mtu_uplink || 1, { 'aria-label': 'Uplink port', 'data-testid': 'vlan-uplink' });
-  const uplinkField = h('label', { class: 'inline', hidden: modeSel.value !== 'mtu' }, ' Uplink port ', uplink);
+  const uplinkField = h('label', { class: 'inline', hidden: modeSel.value !== 'mtu', 'data-testid': 'vlan-uplink-field' }, 'Uplink port', uplink);
   modeSel.addEventListener('change', () => { uplinkField.hidden = modeSel.value !== 'mtu'; });
   const modeBtn = h('button', { class: 'btn', 'data-testid': 'vlan-mode-apply' }, 'Change mode');
   modeBtn.addEventListener('click', async () => {

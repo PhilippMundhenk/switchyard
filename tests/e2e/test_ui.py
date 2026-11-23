@@ -806,3 +806,18 @@ def test_tplink_port_based_groups_and_mtu_vlan(app):
     app.get_by_test_id("vlan-mode-apply").click()
     app.get_by_test_id("confirm-ok").click()
     expect(app.get_by_test_id("mtu-info")).to_contain_text("uplink port 8", timeout=20000)
+
+
+def test_tplink_overview_hardware_and_mtu_layout(app):
+    tp = "50:c7:bf:5e:00:01"
+    add_switch(app, tp)
+    open_tab(app, "overview", tp)
+    expect(app.get_by_test_id("tab-body")).to_contain_text("TL-SG108PE 3.0")  # hardware (#112)
+    open_tab(app, "vlan", tp)
+    app.get_by_test_id("vlan-mode").select_option("mtu")
+    field = app.get_by_test_id("vlan-uplink-field")
+    expect(field).to_be_visible()
+    # the uplink choice sits on the same line as the mode selector (#110)
+    a = app.get_by_test_id("vlan-mode").bounding_box()
+    b = app.get_by_test_id("vlan-uplink").bounding_box()
+    assert abs((a["y"] + a["height"] / 2) - (b["y"] + b["height"] / 2)) < 4
