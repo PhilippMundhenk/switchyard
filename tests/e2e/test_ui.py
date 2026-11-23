@@ -115,8 +115,10 @@ def test_tplink_switch_asks_for_user_and_password(app):
     m = api(app, "GET", f"/devices/{tp}/state").json()["mirror"]
     assert m["ingress"] == [] and m["egress"] == [2]
     open_tab(app, "vlan", tp)
-    options = app.get_by_test_id("vlan-mode").locator("option").all_inner_texts()
-    assert options == ["Port-based", "802.1Q", "MTU VLAN"]
+    # waits until the page has loaded (reading the options at once was flaky)
+    expect(app.get_by_test_id("vlan-mode").locator("option")).to_have_text(
+        ["Port-based", "802.1Q", "MTU VLAN"]
+    )
     # storm control per port: rate and frame types (#88, #111)
     open_tab(app, "qos", tp)
     expect(app.get_by_test_id("storm-table")).to_contain_text("Multicast")
