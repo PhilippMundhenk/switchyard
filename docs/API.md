@@ -33,6 +33,7 @@ Errors are JSON: `{"code": ..., "message": ...}`.
 | PUT | `/api/devices/{mac}/igmp` | Set Igmp |
 | PUT | `/api/devices/{mac}/labels` | Set Labels |
 | PUT | `/api/devices/{mac}/lag` | Set Lag |
+| PUT | `/api/devices/{mac}/led` | Set Led |
 | POST | `/api/devices/{mac}/login` | Switch Login |
 | PUT | `/api/devices/{mac}/loop-detection` | Set Loop Detection |
 | PUT | `/api/devices/{mac}/mirror` | Set Mirror |
