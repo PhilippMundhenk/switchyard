@@ -764,6 +764,11 @@ def create_app(config: Config) -> FastAPI:
         await manager().client(mac).set_igmp(**body.model_dump(exclude_none=True))
         return ok("IGMP snooping saved.")
 
+    @api.put("/devices/{mac}/led")
+    async def set_led(mac: str, body: FlagBody):
+        await manager().client(mac).set_led(body.enabled)
+        return ok("Port LEDs saved.")
+
     @api.put("/devices/{mac}/loop-detection")
     async def set_loop_detection(mac: str, body: FlagBody):
         await manager().client(mac).set_loop_detection(body.enabled)

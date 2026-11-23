@@ -127,6 +127,9 @@ class SwitchDriver(ABC):
     async def set_loop_detection(self, enabled: bool) -> None:
         self._unsupported("loop detection")
 
+    async def set_led(self, enabled: bool) -> None:
+        self._unsupported("switching the port LEDs")
+
     async def apply_lags(self, lags: list[dict]) -> None:
         self._unsupported("link aggregation")
 

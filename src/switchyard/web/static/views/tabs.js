@@ -552,6 +552,14 @@ async function features(host, S) {
     save.addEventListener('click', () => apply(save, () => put(`${dev(S.mac)}/loop-detection`, { enabled: on.checked }), 'Loop detection saved.'));
     host.append(section('Loop detection', h('label', { class: 'check' }, on, ' Detect network loops and block looping ports'), h('p', {}, save)));
   }
+
+  // TP-Link: the port LEDs can be switched off (#113)
+  if (typeof S.state.led === 'boolean') {
+    const led = h('input', { type: 'checkbox', checked: S.state.led, 'data-testid': 'led-enabled' });
+    const save = h('button', { class: 'btn primary', 'data-testid': 'led-save' }, 'Apply');
+    save.addEventListener('click', () => apply(save, () => put(`${dev(S.mac)}/led`, { enabled: led.checked }), 'Port LEDs saved.'));
+    host.append(section('Port LEDs', h('label', { class: 'check' }, led, ' LEDs on'), h('p', {}, save)));
+  }
 }
 
 // ------------------------------------------------------------------- cable
