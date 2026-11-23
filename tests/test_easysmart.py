@@ -644,3 +644,24 @@ async def test_port_groups_mtu_vlan_and_pvid_reset(tptransport, tpsim):
     await c.set_vlan_mode("mtu", uplink=1)
     await c.set_vlan_mode("disabled")
     assert (await c.read_vlan())["mode"] == "disabled" and not a.config["mtu_vlan"]
+
+
+async def test_session_loss_with_slow_key_exchange_recovers(tptransport, tpsim):
+    """TL-SG108PE 5.0 dropped the session; the new key exchange answered late (#95)."""
+    b = tpsim.switches[1]
+    c = client_for(tptransport, MAC_B)
+    await c.read_info()
+    assert c.generation == "B" and c.session_capable
+    b.session_key = None  # the switch forgets the session
+    b.key_delay = 1.2  # and answers the next key exchange late
+    assert (await c.read_info())["mac"] == MAC_B
+    assert c.generation == "B"
+    # a switch that has taken keys before is never treated as older firmware
+    b.session_key = None
+    b.ignore_keys = True
+    with pytest.raises(Unreachable):
+        await c.read_info()
+    assert c.generation is None and c.session_capable
+    b.ignore_keys = False
+    b.key_delay = 0
+    assert (await c.read_info())["mac"] == MAC_B and c.generation == "B"

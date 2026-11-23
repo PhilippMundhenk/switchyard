@@ -52,6 +52,8 @@ class SimEasySmart:
     lag_groups: int = 2
     reboot_seconds: float = 3.0
     write_delay: float = 0.0  # answer changes this late (some take the real switch seconds)
+    key_delay: float = 0.0  # answer the session key exchange this late
+    ignore_keys: bool = False  # stay silent on key exchanges (a switch that is busy)
     traffic: bool = True
 
     def __post_init__(self):
@@ -422,7 +424,7 @@ class SimEasySmart:
         if request.op == Op.LOGIN:
             tags = [t for t, _ in request.tlvs]
             if tags == [T.KEY_EXCHANGE]:
-                if self.generation != "B":
+                if self.generation != "B" or self.ignore_keys:
                     return None
                 raw = request.tlvs[0][1]
                 cipher = int.from_bytes(raw[2:10], "little")
@@ -468,7 +470,15 @@ class _SimProtocol(asyncio.DatagramProtocol):
             if reply is not None:
                 encrypted = key or (switch.session_key if request.op == Op.LOGIN else None)
                 raw = reply.encode_session(encrypted) if encrypted else reply.encode()
-                delay = (
+                if (
+                    request.op == Op.LOGIN
+                    and request.tlvs[:1]
+                    and (request.tlvs[0][0] == T.KEY_EXCHANGE)
+                ):
+                    delay = switch.key_delay
+                else:
+                    delay = 0.0
+                delay = delay or (
                     switch.write_delay
                     if request.op == Op.LOGIN
                     and request.tlvs[:1] != []
