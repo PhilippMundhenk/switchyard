@@ -85,7 +85,7 @@ class SimEasySmart:
             "igmp": False,
             "igmp_suppress": False,
             "dot1q": False,
-            "port_vlan": False,
+            "port_vlan": True,  # the default on hardware: port-based, every port in group 1
             "vlans": {1: {"members": all_ports, "tagged": [], "name": "Default_VLAN"}},
             "pvid": dict.fromkeys(all_ports, 1),
             "port_groups": {1: all_ports},
@@ -358,6 +358,7 @@ class SimEasySmart:
                     dot1q=False,
                     mtu_vlan=False,
                     port_groups={1: list(range(1, self.ports + 1))},
+                    pvid=dict.fromkeys(c["pvid"], 1),  # leaving 802.1Q resets the PVIDs
                 )
             else:
                 c["port_vlan"] = False

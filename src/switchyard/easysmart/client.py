@@ -381,7 +381,8 @@ class EasySmartClient(SwitchDriver):
             "dot1q": [],
             "pvid": {},
             # one port-based and one 802.1Q mode (no basic/advanced as on NETGEAR), and MTU VLAN
-            "modes": ["disabled", "port_basic", "dot1q_advanced"] + (["mtu"] if mtu else []),
+            # VLANs cannot be switched off: the default is port-based with one group (#96)
+            "modes": ["port_basic", "dot1q_advanced"] + (["mtu"] if mtu else []),
             # a port is in exactly one port-based group; group 1 holds the ports of no other
             "exclusive_groups": True,
             # the switch resets every PVID to 1 when 802.1Q is switched off
@@ -613,13 +614,10 @@ class EasySmartClient(SwitchDriver):
             await self.write([(T.DOT1Q_ENABLED, b"\x01")])
         elif mode.startswith("port"):
             await self.write([(T.PORT_VLAN_ENABLED, b"\x01")])
-        elif mode == "disabled":  # switch off whichever mode is on (layout: unverified)
-            if current.get("mode") == "mtu":
-                async with self.lock:
-                    await self._save()
-                return
-            tag = T.PORT_VLAN_ENABLED if current.get("mode") == "port_basic" else T.DOT1Q_ENABLED
-            await self.write([(tag, b"\x00")])
+        elif mode == "disabled":
+            # VLANs cannot be switched off on these switches: their default is port-based mode
+            # with every port in group 1, which separates nothing (#96)
+            await self.write([(T.PORT_VLAN_ENABLED, b"\x01")])
         else:
             raise ValueError(f"unknown VLAN mode {mode}")
 
