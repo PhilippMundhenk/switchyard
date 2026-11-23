@@ -67,6 +67,10 @@ Also on that switch (#85): mirroring takes exactly one source port (received, se
 port-based groups are exclusive and group 1 takes every port of no other group, so Switchyard
 writes only the other groups. Writing MTU VLAN (8192: enabled, uplink port) is implemented from
 these notes and not yet confirmed on hardware.
+Sessions (#94): the same switch dropped its session key after a few minutes while discovery
+still worked, and answered a key exchange after up to 0.8 s. Switchyard re-keys on silence, waits up
+to 3 s three times for a switch that took a key before, and never falls back to the token-only
+generation for such a switch.
 
 ## 2. Transport
 

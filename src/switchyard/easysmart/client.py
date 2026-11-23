@@ -53,6 +53,9 @@ KEY_ACCEPTED = 4098
 # A change is never resent (it could be applied twice), so wait long for its answer: some
 # changes take the switch seconds (a VLAN mode switch rewrites the table) (#83).
 WRITE_TIMEOUT = 5.0
+# the key exchange: first contact (older firmware stays silent), and a switch known to take keys
+KEY_PROBE_TIMEOUT = 2.0
+KEY_TIMEOUT = 3.0
 DEFAULT_USER = "admin"
 
 
@@ -118,6 +121,8 @@ class EasySmartClient(SwitchDriver):
         self.generation: str | None = None  # "A" (token) or "B" (session key)
         # newer firmware that also wants a token per write (seen on a TL-SG108PE 5.0)
         self.session_token: bool | None = None
+        # True once the switch accepted a session key: it is never treated as older firmware again
+        self.session_capable: bool | None = None
         self.ports: int | None = None
         self.auto_save: bool | None = None
         self.unsupported: set[int] = set()
@@ -158,23 +163,31 @@ class EasySmartClient(SwitchDriver):
         key = "".join(alphabet[b % len(alphabet)] for b in os.urandom(8)).encode()
         # the answer already uses the session key: the transport must know it beforehand
         self.transport.sessions[self.mac] = key
+        # A switch that accepted a key before gets more patience: its answer can take a second,
+        # and silence then means "busy" or "dropped the session", not older firmware (#95).
+        known = self.session_capable
         try:
             reply = await self.transport.request(
                 Op.LOGIN,
                 self.mac,
                 [(T.KEY_EXCHANGE, key_exchange_value(key, self.rsa_modulus))],
-                timeout=min(self.transport.timeout, 1.0),
-                retries=0,
+                timeout=KEY_TIMEOUT if known else KEY_PROBE_TIMEOUT,
+                retries=2 if known else 0,
                 session=False,
             )
         except TimeoutError:
             self.transport.sessions.pop(self.mac, None)
+            if known:
+                raise Unreachable(
+                    f"The switch {format_mac(self.mac)} does not answer the session key exchange."
+                ) from None
             self.generation = "A"  # older firmware ignores the key exchange
             return
         if reply[0].error != KEY_ACCEPTED:
             self.transport.sessions.pop(self.mac, None)
             raise EasySmartError(reply[0].error, T.KEY_EXCHANGE)
         self.generation = "B"
+        self.session_capable = True
 
     async def _get(self, tag: int, **kw) -> Packet:
         """Read one setting (the switch answers one per request, plus related ones)."""
