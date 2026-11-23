@@ -821,3 +821,14 @@ def test_tplink_overview_hardware_and_mtu_layout(app):
     a = app.get_by_test_id("vlan-mode").bounding_box()
     b = app.get_by_test_id("vlan-uplink").bounding_box()
     assert abs((a["y"] + a["height"] / 2) - (b["y"] + b["height"] / 2)) < 4
+
+
+def test_tplink_leds_off_and_on(app):
+    tp = "50:c7:bf:5e:00:01"
+    add_switch(app, tp)
+    api(app, "POST", f"/devices/{tp}/login", {"password": "admin", "username": "admin"})
+    open_tab(app, "features", tp)
+    app.get_by_test_id("led-enabled").uncheck()
+    app.get_by_test_id("led-save").click()
+    expect(app.locator(".toast").last).to_contain_text("Port LEDs saved")
+    assert api(app, "GET", f"/devices/{tp}/state").json()["led"] is False
