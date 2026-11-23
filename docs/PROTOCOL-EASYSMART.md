@@ -383,7 +383,19 @@ Default VLAN 1 name: `Default_VLAN` on Gen A (ESSLIB capture, SMRT README), `Def
 Gen A: a GET 8705 returns 8704, all 8705 rows, then 8707; a GET 8706 returns 8706 rows then 8707
 (ESSLIB captures, SMRT README). Gen B returns only what was asked (+ the listed companions) (ESCP).
 
-### 7.8 PoE (TL-SG108PE) - UDP layout UNKNOWN
+### 7.8 PoE (TL-SG108PE)
+
+**Confirmed on hardware (#109, #114)**, TL-SG108PE 5.0, PoE on ports 1-4:
+
+| Type | Layout | Notes |
+|---|---|---|
+| 14336 (0x3800) | rows of 20 B: u8 port, IPv4 ping address, u16 startup delay s, u16 interval s, u16 failure threshold, u16 break time s, 6 B unknown (0 in all scans), u8 enabled | defaults 60, 60, 5, 15; read with a configured port 2: `02 c0a8b26f 003c 003c 0005 000f 000000000000 01` |
+| 14080 (0x3700) | u8 global auto recovery, `00` = off | **no answer while on**; writing `01` is inferred |
+| 14592 (0x3900) | rows of 2 B: u8 port, u8 extend mode, `00` = off | **no answer while any port is on**; writing `01` is inferred |
+
+Switchyard keeps the 6 unknown bytes as read when it writes a recovery row.
+
+Earlier notes (status and configuration tags):
 
 USER names: 13568 PoE status, 13824 PoE config, 14080 PoE global recovery, 14336 PoE recovery,
 14592 PoE extend. **No source gives a byte layout.** Value semantics known from the **web UI**

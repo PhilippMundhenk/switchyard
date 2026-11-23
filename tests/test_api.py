@@ -900,3 +900,8 @@ def test_netgear_has_no_led_switch(client, office):
 def test_netgear_has_no_per_port_storm_control(client, office):
     r = client.put(f"/api/devices/{office}/qos", json={"storm_ports": {"2": {"rate": 1}}})
     assert r.status_code == 422 and "frame type" in r.json()["message"]
+
+
+def test_netgear_has_no_poe_settings(client, office):
+    r = client.put(f"/api/devices/{office}/poe", json={"extend": {"1": True}})
+    assert r.status_code == 409 and r.json()["code"] == "unsupported"

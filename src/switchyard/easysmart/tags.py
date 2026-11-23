@@ -300,3 +300,33 @@ def pack_storm(port: int, kbps: int, unicast=True, multicast=True, broadcast=Tru
         raise ValueError("A storm control rate is a multiple of 64 kbit/s.")
     flags = [1 if on and f else 0 for f in (unicast, multicast, broadcast)]
     return bytes([port, 1 if on else 0, *flags]) + (kbps if on else 0).to_bytes(4, "big")
+
+
+# PoE auto recovery, per port (20 bytes, confirmed by a tester's scans, #114):
+# port, ping IPv4, startup delay s, interval s, failure threshold, break time s (u16 each),
+# 6 bytes of unknown meaning (kept as read), enabled (1 = on)
+def poe_recovery(value: bytes) -> dict:
+    return {
+        "port": value[0],
+        "ip": ipv4(value[1:5]),
+        "startup_delay": int.from_bytes(value[5:7], "big"),
+        "interval": int.from_bytes(value[7:9], "big"),
+        "threshold": int.from_bytes(value[9:11], "big"),
+        "break_time": int.from_bytes(value[11:13], "big"),
+        "enabled": value[19] == 1,
+        "_rest": value[13:19].hex(),
+    }
+
+
+def pack_poe_recovery(cfg: dict) -> bytes:
+    rest = bytes.fromhex(cfg.get("_rest") or "00" * 6)
+    return (
+        bytes([cfg["port"]])
+        + pack_ipv4(cfg["ip"])
+        + b"".join(
+            int(cfg[k]).to_bytes(2, "big")
+            for k in ("startup_delay", "interval", "threshold", "break_time")
+        )
+        + rest[:6].ljust(6, b"\x00")
+        + bytes([1 if cfg["enabled"] else 0])
+    )

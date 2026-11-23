@@ -477,6 +477,54 @@ async function qos(host, S) {
     h('p', {}, save)));
 }
 
+// --------------------------------------------------------------------- poe
+// PoE auto recovery and extend mode (TP-Link, #114). The switch does not answer its global
+// recovery switch and extend mode while they are on: those show as "unknown".
+async function poeTab(host, S) {
+  const poe = S.state.poe;
+  if (!poe) return host.append(section('PoE', unsupported('PoE configuration')));
+  const apply = applier(S);
+  const onOff = (v) => [['', v === null ? 'unknown (probably on)' : '–'], ['on', 'on'], ['off', 'off']];
+  const state = (v) => (v === null ? '' : v ? 'on' : 'off');
+  const glob = select(onOff(poe.recovery_enabled), state(poe.recovery_enabled), { 'data-testid': 'poe-recovery-global' });
+  const row = {};
+  const num = (value, min, testid, label) => h('input', { type: 'number', min: String(min), max: '65535', value: String(value), class: 'short', 'aria-label': label, 'data-testid': testid });
+  const body = h('tbody', {}, ...poe.ports.map((p) => {
+    const r = poe.recovery[p];
+    row[p] = {
+      enabled: h('input', { type: 'checkbox', checked: r.enabled, 'aria-label': `Auto recovery on port ${p}`, 'data-testid': `poe-rec-${p}` }),
+      ip: h('input', { type: 'text', value: r.ip === '0.0.0.0' ? '' : r.ip, placeholder: '192.168.0.10', inputmode: 'decimal', 'aria-label': `Ping address for port ${p}`, 'data-testid': `poe-ip-${p}` }),
+      startup_delay: num(r.startup_delay, 0, `poe-startup-${p}`, `Startup delay of port ${p}`),
+      interval: num(r.interval, 1, `poe-interval-${p}`, `Interval of port ${p}`),
+      threshold: num(r.threshold, 1, `poe-threshold-${p}`, `Failure threshold of port ${p}`),
+      break_time: num(r.break_time, 0, `poe-break-${p}`, `Break time of port ${p}`),
+      extend: select(onOff(poe.extend[p]), state(poe.extend[p]), { 'aria-label': `Extend mode of port ${p}`, 'data-testid': `poe-extend-${p}` }),
+    };
+    const c = row[p];
+    return h('tr', {}, h('td', {}, String(p)), h('td', {}, c.enabled), h('td', {}, c.ip), h('td', {}, c.startup_delay), h('td', {}, c.interval), h('td', {}, c.threshold), h('td', {}, c.break_time), h('td', {}, c.extend));
+  }));
+  const save = h('button', { class: 'btn primary', 'data-testid': 'poe-save' }, 'Apply');
+  save.addEventListener('click', () => {
+    const payload = { recovery: {}, extend: {} };
+    if (glob.value) payload.recovery_enabled = glob.value === 'on';
+    for (const p of poe.ports) {
+      const c = row[p];
+      const ip = c.ip.value.trim() || '0.0.0.0';
+      if (c.enabled.checked && ip === '0.0.0.0') return toast(`Port ${p}: enter the address to ping.`, 'error');
+      payload.recovery[p] = { enabled: c.enabled.checked, ip, startup_delay: Number(c.startup_delay.value), interval: Number(c.interval.value), threshold: Number(c.threshold.value), break_time: Number(c.break_time.value) };
+      if (c.extend.value) payload.extend[p] = c.extend.value === 'on';
+    }
+    return apply(save, () => put(`${dev(S.mac)}/poe`, payload), 'PoE settings saved.');
+  });
+  host.append(section('PoE auto recovery',
+    h('p', { class: 'muted' }, 'The switch pings a device on a PoE port and power-cycles the port when it stops answering: it starts after the startup delay and pings every interval; after the failure threshold of missed pings the port stays off for the break time (seconds).'),
+    field('Auto recovery (whole switch)', glob, "Switching this or extend mode on is not yet confirmed on a real switch: check the result on the switch's own page."),
+    h('div', { class: 'table-wrap' }, stackable(h('table', { class: 'controls', 'data-testid': 'poe-table' },
+      h('thead', {}, h('tr', {}, ...['Port', 'Recovery', 'Ping address', 'Startup delay', 'Interval', 'Failures', 'Break time', 'Extend mode'].map((t) => h('th', {}, t)))), body))),
+    h('p', { class: 'muted' }, 'Extend mode: longer cables at a lower speed, as on the switch\'s own page.'),
+    h('p', {}, save)));
+}
+
 // ---------------------------------------------------------------- features
 async function features(host, S) {
   const apply = applier(S);
@@ -927,6 +975,7 @@ export const TABS = [
   { id: 'features', label: 'Mirroring & multicast', render: features, parts: ['features'] },
   { id: 'ports-config', label: 'Speed & flow', render: portSettings, parts: ['port_admin', 'ports'] },
   { id: 'lag', label: 'Link aggregation', render: lagTab, parts: ['lag', 'port_admin'] },
+  { id: 'poe', label: 'PoE', render: poeTab, parts: ['poe'] },
   { id: 'cable', label: 'Cable test', render: cable, parts: null },
   { id: 'firmware', label: 'Firmware', render: firmware, parts: null },
   { id: 'maintenance', label: 'Maintenance', render: maintenance, parts: null },

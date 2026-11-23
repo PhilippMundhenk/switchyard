@@ -39,6 +39,7 @@ Errors are JSON: `{"code": ..., "message": ...}`.
 | PUT | `/api/devices/{mac}/mirror` | Set Mirror |
 | PUT | `/api/devices/{mac}/network` | Set Network |
 | POST | `/api/devices/{mac}/password` | Switch Password |
+| PUT | `/api/devices/{mac}/poe` | Set Poe |
 | PUT | `/api/devices/{mac}/port-settings` | Set Port Settings |
 | GET | `/api/devices/{mac}/ports` | Ports |
 | PUT | `/api/devices/{mac}/qos` | Set Qos |

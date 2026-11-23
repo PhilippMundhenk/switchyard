@@ -71,7 +71,7 @@ from 2023 on with a session key. So far this has been tested against the built-i
   another computer can run at the same time.
 - Changes need the user name and password of the switch (factory setting `admin` / `admin`).
   Switchyard saves every change to the switch's flash, as the vendor utility does.
-- Not yet: PoE settings, the cable test, firmware upgrades, resetting the statistics. These switches
+- Not yet: PoE power readings and per-port PoE on/off, the cable test, firmware upgrades, resetting the statistics. These switches
   count packets, not bytes, so the statistics and charts show packets per second.
 
 ### Test plan

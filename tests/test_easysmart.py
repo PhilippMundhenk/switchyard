@@ -156,7 +156,8 @@ async def test_read_everything(tptransport, tpsim, mac):
         "max_sources": 1,
     }
     assert state["igmp"]["enabled"] is False and state["loop_detection"] is False
-    assert state["led"] is True and state["poe"] is None
+    assert state["led"] is True
+    assert (state["poe"] is not None) == (mac == MAC_A)  # the TL-SG108PE has PoE
     assert state["capabilities"] == {"firmware_upgrade": False, "cable_test": False}
     ports = state["ports"]
     assert ports[0]["up"] and ports[0]["speed_mbps"] == 1000 and ports[0]["rx_bytes"] is None
@@ -687,3 +688,39 @@ async def test_storm_control_per_port(tptransport, tpsim):
         await c.set_qos(storm_ports={9: {"rate": 0}})
     await c.set_qos(storm_ports={2: {"rate": 0}, 3: {"rate": 0}})
     assert a.config["storm"][2] == [0, 0, 0, 0]
+
+
+async def test_poe_auto_recovery_and_extend(tptransport, tpsim):
+    """Layouts from the tester's scans (#114); the switch is silent on 'on' settings."""
+    a = tpsim.switches[0]
+    c = client_for(tptransport, MAC_A)
+    poe = await c.read_poe()
+    assert poe["ports"] == [1, 2, 3, 4] and poe["recovery_enabled"] is False
+    assert poe["recovery"][2]["startup_delay"] == 60 and poe["extend"][2] is False
+    await c.set_poe(
+        {
+            "recovery_enabled": True,
+            "recovery": {2: {"enabled": True, "ip": "192.168.0.111", "threshold": 3}},
+            "extend": {3: True},
+        }
+    )
+    assert a.config["poe_recovery_on"] and a.config["poe_extend"][3]
+    assert T.pack_poe_recovery(a.config["poe_recovery"][2]).hex() == (
+        "02c0a8006f003c003c0003000f00000000000001"
+    )
+    poe = await c.read_poe()
+    assert poe["recovery_enabled"] is None and poe["extend"][3] is None  # silent while on
+    assert poe["recovery"][2]["ip"] == "192.168.0.111" and poe["recovery"][2]["enabled"]
+    with pytest.raises(ValueError, match="address to ping"):
+        await c.set_poe({"recovery": {1: {"enabled": True}}})
+    with pytest.raises(ValueError, match="no PoE"):
+        await c.set_poe({"extend": {5: True}})
+    with pytest.raises(ValueError, match="interval"):
+        await c.set_poe({"recovery": {2: {"interval": 0}}})
+    await c.set_poe({"recovery_enabled": False, "extend": {3: False}})
+    assert (await c.read_poe())["recovery_enabled"] is False
+    # a switch without PoE
+    b = client_for(tptransport, MAC_B)
+    assert await b.read_poe() is None
+    with pytest.raises(Unsupported):
+        await b.set_poe({"extend": {1: True}})
