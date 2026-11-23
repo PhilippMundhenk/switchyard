@@ -139,6 +139,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .grid + div > .card, .grid + [data-testid="found"] { margin-top: 16px; }
 [data-testid="found"] .card { margin-top: 16px; }
 .row label.check { margin: 0; }
+.row label.inline { display: flex; gap: 8px; align-items: center; margin: 0; font-weight: 400; }
 hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
 .chart { width: 100%; height: auto; max-height: 260px; }
 .chart .grid { stroke: var(--border); stroke-width: 1; }
