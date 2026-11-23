@@ -147,7 +147,7 @@ async def test_read_everything(tptransport, tpsim, mac):
     assert info["mac"] == mac and info["ports"] in (5, 8)
     assert c.generation == ("A" if mac == MAC_A else "B")
     state = await c.read_state()
-    assert state["vlan"]["mode"] == "disabled" and state["qos"]["mode"] == "port"
+    assert state["vlan"]["mode"] == "port_basic" and state["qos"]["mode"] == "port"
     assert state["mirror"] == {
         "destination": 0,
         "sources": [],
@@ -277,7 +277,7 @@ async def test_vlans(tptransport, tpsim):
     assert vlan["mode"] == "port_basic" and {"id": 2, "members": [5, 6]} in vlan["port_vlans"]
     await c.set_port_vlans([])
     await c.set_vlan_mode("disabled")
-    assert (await c.read_vlan())["mode"] == "disabled"
+    assert (await c.read_vlan())["mode"] == "port_basic"
     with pytest.raises(ValueError):
         await c.set_vlan_mode("weird")
 
@@ -547,7 +547,7 @@ async def test_qos_modes_offered(tptransport, tpsim):
 
 async def test_read_part(tptransport, tpsim):
     c = client_for(tptransport, MAC_A)
-    assert (await c.read_part("vlan"))["mode"] == "disabled"
+    assert (await c.read_part("vlan"))["mode"] == "port_basic"
     assert "loop_detection" in await c.read_part("features")
     assert (await c.read_part("lag"))["groups"] == 2
     with pytest.raises(ValueError):
@@ -567,7 +567,7 @@ async def test_slow_change_answer_is_waited_for(tptransport, tpsim):
 async def test_vlan_modes_and_directional_mirror(tptransport, tpsim):
     a = tpsim.switches[0]
     c = client_for(tptransport, MAC_A)
-    assert (await c.read_vlan())["modes"] == ["disabled", "port_basic", "dot1q_advanced", "mtu"]
+    assert (await c.read_vlan())["modes"] == ["port_basic", "dot1q_advanced", "mtu"]
     with pytest.raises(ValueError, match="one source port"):
         await c.set_mirror(8, [], ingress=[1, 2], egress=[2, 3])
     await c.set_mirror(8, [], ingress=[2], egress=[])
@@ -643,7 +643,7 @@ async def test_port_groups_mtu_vlan_and_pvid_reset(tptransport, tpsim):
     assert set(a.config["pvid"].values()) == {1}
     await c.set_vlan_mode("mtu", uplink=1)
     await c.set_vlan_mode("disabled")
-    assert (await c.read_vlan())["mode"] == "disabled" and not a.config["mtu_vlan"]
+    assert (await c.read_vlan())["mode"] == "port_basic" and not a.config["mtu_vlan"]
 
 
 async def test_session_loss_with_slow_key_exchange_recovers(tptransport, tpsim):

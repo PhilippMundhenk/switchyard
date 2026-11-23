@@ -24,6 +24,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 
 ### Fixed
 - TP-Link: a switch that drops its session key is reached again with a new key, instead of staying 'not reachable' until a restart (#95).
+- TP-Link: the VLAN page no longer offers 'Disabled' (these switches cannot switch VLANs off; the default is port-based with every port in group 1) and says so (#96).
 - TP-Link VLAN page: port-based groups can be added (a port is in one group; group 1 holds the rest), MTU VLAN mode with its uplink port, hints on PVIDs (#87).
 - TP-Link mirroring takes one source port with its direction; a refused change explains itself (#86).
 - TP-Link storm control: choose unknown unicast, multicast and broadcast frames; the API accepts TP-Link's own rate choices (#88).

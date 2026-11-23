@@ -284,6 +284,7 @@ async function vlan(host, S) {
   });
   const hints = short
     ? [h('p', { class: 'muted' }, 'Port-based: each port belongs to exactly one group, and ports in the same group can talk to each other. 802.1Q: VLANs with tagged and untagged ports and a PVID per port. MTU VLAN: every port talks to the uplink port only.'),
+      modes.includes('disabled') ? null : h('p', { class: 'muted', 'data-testid': 'vlan-default-hint' }, 'VLANs cannot be switched off on this switch. Its default is port-based with every port in group 1, which separates nothing.'),
       v.pvid_reset_on_disable ? h('p', { class: 'muted', 'data-testid': 'pvid-hint' }, 'All PVIDs are 1 by default, and the switch resets them to 1 when 802.1Q is switched off.') : null]
     : [h('p', { class: 'muted' }, 'Basic modes are simpler on the switch itself; advanced modes allow overlapping groups and tagging.')];
   host.append(section('VLAN mode', h('div', { class: 'row' }, modeSel, uplinkField, modeBtn), ...hints));
