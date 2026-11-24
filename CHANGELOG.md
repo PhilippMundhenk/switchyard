@@ -23,6 +23,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - A bridged Docker network with a published port works for switches added by IP address; host networking is only needed for the search (#61).
 
 ### Fixed
+- TP-Link: the port LED switch is on the Network tab; the cable test page says to run the test on the switch's own web interface (#121).
 - TP-Link PoE: recovery and extend mode are written as the groups the switch expects (all PoE ports in one change); error 3 outside the system settings gets a neutral message (#120).
 - The switch page shows only the sections the switch has (no PoE on NETGEAR, no LAG or port speed on a GS108E v1), and the tab row wraps instead of scrolling sideways (#122).
 - TP-Link: storm control per port, with the rate and the frame types of each port, like the switch's own page (#111).

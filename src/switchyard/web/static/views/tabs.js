@@ -170,6 +170,14 @@ async function network(host, S) {
     h('label', { class: 'check' }, dhcp, ' Get the address from DHCP'),
     field('IP address', ip), field('Subnet mask', mask), field('Gateway', gw, 'Empty for none.'),
     errors, h('p', {}, save)));
+
+  // TP-Link: the port LEDs can be switched off (#113, moved here in #121)
+  if (typeof S.state.led === 'boolean') {
+    const led = h('input', { type: 'checkbox', checked: S.state.led, 'data-testid': 'led-enabled' });
+    const save = h('button', { class: 'btn primary', 'data-testid': 'led-save' }, 'Apply');
+    save.addEventListener('click', () => apply(save, () => put(`${dev(S.mac)}/led`, { enabled: led.checked }), 'Port LEDs saved.'));
+    host.append(section('Port LEDs', h('label', { class: 'check' }, led, ' LEDs on'), h('p', {}, save)));
+  }
 }
 
 // ------------------------------------------------------------------- ports
@@ -610,13 +618,6 @@ async function features(host, S) {
     host.append(section('Loop detection', h('label', { class: 'check' }, on, ' Detect network loops and block looping ports'), h('p', {}, save)));
   }
 
-  // TP-Link: the port LEDs can be switched off (#113)
-  if (typeof S.state.led === 'boolean') {
-    const led = h('input', { type: 'checkbox', checked: S.state.led, 'data-testid': 'led-enabled' });
-    const save = h('button', { class: 'btn primary', 'data-testid': 'led-save' }, 'Apply');
-    save.addEventListener('click', () => apply(save, () => put(`${dev(S.mac)}/led`, { enabled: led.checked }), 'Port LEDs saved.'));
-    host.append(section('Port LEDs', h('label', { class: 'check' }, led, ' LEDs on'), h('p', {}, save)));
-  }
 }
 
 // ------------------------------------------------------------------- cable
@@ -624,7 +625,9 @@ async function features(host, S) {
 const can = (S, what) => !S.state.capabilities || S.state.capabilities[what] !== false;
 
 async function cable(host, S) {
-  if (!can(S, 'cable_test')) return host.append(section('Cable test', unsupported('The cable test')));
+  if (!can(S, 'cable_test')) {
+    return host.append(section('Cable test', h('p', { 'data-testid': 'unsupported' }, "This switch has a cable test, but it cannot be started through Switchyard: run it on the switch's own web interface.")));
+  }
   const n = S.state.info.ports;
   const allPorts = Array.from({ length: n }, (_, i) => i + 1);
   const boxes = allPorts.map((p) => h('input', { type: 'checkbox', 'data-testid': `cable-port-${p}` }));
@@ -968,7 +971,7 @@ async function maintenance(host, S) {
 
 export const TABS = [
   { id: 'overview', label: 'Overview', render: overview, parts: null },
-  { id: 'network', label: 'Network', render: network, parts: ['info'] },
+  { id: 'network', label: 'Network', render: network, parts: ['info', 'features'] },
   { id: 'ports', label: 'Ports', render: ports, parts: ['ports'] },
   { id: 'vlan', label: 'VLAN', render: vlan, parts: ['vlan'] },
   { id: 'qos', label: 'QoS', render: qos, parts: ['qos'] },
