@@ -858,7 +858,20 @@ def test_tplink_poe_auto_recovery(app):
     expect(app.locator(".toast").last).to_contain_text("PoE settings saved")
     rec = api(app, "GET", f"/devices/{tp}/state").json()["poe"]["recovery"]["2"]
     assert rec["enabled"] and rec["ip"] == "192.168.0.111"
-    open_tab(app, "poe")  # the NETGEAR demo switch has no PoE settings
-    add_switch(app, MAC)
+    add_switch(app, MAC)  # the NETGEAR demo switch has no PoE settings: no PoE tab
     open_tab(app, "poe")
-    expect(app.get_by_test_id("unsupported")).to_contain_text("PoE")
+    expect(app.get_by_test_id("tab-not-here")).to_be_visible()
+
+
+def test_tabs_show_only_what_the_switch_has_and_fit(app):
+    add_switch(app, MAC)
+    open_tab(app, "overview")
+    expect(app.get_by_test_id("tab-poe")).to_be_hidden()  # NETGEAR: no PoE settings (#122)
+    tabs = [t for t in app.locator("nav.tabs a").all() if t.is_visible()]
+    rows = {round(t.bounding_box()["y"]) for t in tabs}
+    assert len(rows) == 1, rows  # one line on a desktop window, no sideways scrolling
+    nav = app.locator("nav.tabs")
+    assert nav.evaluate("n => n.scrollWidth <= n.clientWidth")
+    # a section the switch does not have, opened directly
+    open_tab(app, "poe")
+    expect(app.get_by_test_id("tab-not-here")).to_be_visible()

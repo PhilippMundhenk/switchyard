@@ -24,6 +24,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 
 ### Fixed
 - TP-Link PoE: recovery and extend mode are written as the groups the switch expects (all PoE ports in one change); error 3 outside the system settings gets a neutral message (#120).
+- The switch page shows only the sections the switch has (no PoE on NETGEAR, no LAG or port speed on a GS108E v1), and the tab row wraps instead of scrolling sideways (#122).
 - TP-Link: storm control per port, with the rate and the frame types of each port, like the switch's own page (#111).
 - TP-Link: port LEDs on and off (#113); the overview shows the hardware version (#112); the MTU VLAN uplink field is aligned (#110).
 - TP-Link: a switch that drops its session key is reached again with a new key, instead of staying 'not reachable' until a restart (#95).
