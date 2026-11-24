@@ -89,6 +89,7 @@ class EasySmartTransport:
         self.sessions: dict[bytes, bytes] = {}  # switch MAC -> session key (newer firmware)
         self._waiters: dict[int, Callable[[Packet, tuple], None]] = {}
         self.packet_log: deque[dict] = deque(maxlen=log_size)
+        self._sent: dict[int, float] = {}  # sequence -> first send (monotonic)
         self.home: dict[bytes, str] = {}
 
     # -- lifecycle -----------------------------------------------------------
@@ -138,6 +139,17 @@ class EasySmartTransport:
     # -- packet log ----------------------------------------------------------
 
     def _record(self, direction: str, packet: Packet | None, raw: bytes, peer: str) -> None:
+        # how long the answer took since the request was first sent (#123): slow answers and
+        # resends show in the protocol log
+        waited = ""
+        if packet is not None:
+            if direction == "tx":
+                self._sent.setdefault(packet.seq, time.monotonic())
+            elif packet.seq in self._sent:
+                ms = (time.monotonic() - self._sent.pop(packet.seq)) * 1000
+                waited = f", answered after {ms:.0f} ms"
+                if len(self._sent) > 1000:
+                    self._sent.clear()
         self.packet_log.append(
             {
                 "id": next(LOG_IDS),
@@ -145,7 +157,9 @@ class EasySmartTransport:
                 "direction": direction,
                 "peer": peer,
                 "device": format_mac(packet.switch_mac) if packet else None,
-                "summary": ("TP-Link " + describe(packet)) if packet else "not a TP-Link packet",
+                "summary": ("TP-Link " + describe(packet) + waited)
+                if packet
+                else "not a TP-Link packet",
                 "bytes": len(raw),
                 # decrypted, credentials blanked: the scramble hides nothing anyway
                 "hex": redact(packet).encode_plain().hex() if packet else raw.hex(),

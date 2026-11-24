@@ -103,6 +103,7 @@ class Transport:
         self._seq = int(time.time() * 1000) & 0xFFFF
         self._waiters: dict[int, Callable[[Packet, tuple], None]] = {}
         self.packet_log: deque[dict] = deque(maxlen=log_size)
+        self._sent: dict[int, float] = {}  # sequence -> first send (monotonic)
         self.home: dict[bytes, str] = {}  # switch MAC -> interface it answered on
 
     # -- lifecycle -----------------------------------------------------------
@@ -175,6 +176,17 @@ class Transport:
     # -- packet log ----------------------------------------------------------
 
     def _record(self, direction: str, packet: Packet | None, raw: bytes, peer: str) -> None:
+        # how long the answer took since the request was first sent (#123): slow answers and
+        # resends show in the protocol log
+        waited = ""
+        if packet is not None:
+            if direction == "tx":
+                self._sent.setdefault(packet.seq, time.monotonic())
+            elif packet.seq in self._sent:
+                ms = (time.monotonic() - self._sent.pop(packet.seq)) * 1000
+                waited = f", answered after {ms:.0f} ms"
+                if len(self._sent) > 1000:
+                    self._sent.clear()
         self.packet_log.append(
             {
                 "id": next(LOG_IDS),
@@ -182,7 +194,7 @@ class Transport:
                 "direction": direction,
                 "peer": peer,
                 "device": format_mac(packet.device_mac) if packet else None,
-                "summary": describe(packet) if packet else "not an NSDP packet",
+                "summary": (describe(packet) + waited) if packet else "not an NSDP packet",
                 "bytes": len(raw),
                 "hex": _redact(packet, raw).hex(),
             }
