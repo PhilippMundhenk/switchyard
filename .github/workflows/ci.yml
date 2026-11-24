@@ -27,7 +27,7 @@ jobs:
         python: ["3.11", "3.12", "3.13", "3.15"]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: "${{ matrix.python }}", cache: pip }
       - run: pip install -e ".[dev]"
       - name: MQTT broker (mosquitto) for the Home Assistant tests
@@ -55,7 +55,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: "3.13", cache: pip }
       - run: pip install -e ".[dev]"
       - run: python -m playwright install --with-deps chromium
@@ -74,7 +74,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: "3.13", cache: pip }
       - run: pip install -e ".[dev]"
       - run: python -m playwright install --with-deps chromium
@@ -91,7 +91,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: "3.13", cache: pip }
       - run: pip install homeassistant paho-mqtt
       - run: python tools/validate_ha_discovery.py

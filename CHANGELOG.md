@@ -14,6 +14,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
   new `switchyard reset-password` (#48).
 
 ### Changed
+- Dependencies: uvicorn 0.54, paho-mqtt 2.2, pytest-asyncio 1.5, ruff 0.17, amqtt 0.12; GitHub Actions updated (#131).
 - A change shows its result as soon as the switch confirms it; the page then re-reads only the affected settings in the background (`GET /api/devices/{mac}/state?parts=...`) instead of the whole switch. Much faster on TP-Link switches (#81).
 - The container image runs Python 3.15 (CI also tests 3.15); test tools and GitHub Actions updated (#77).
 - Switch protocols sit behind one driver interface; NETGEAR NSDP is the first driver. Stored switches remember their protocol, the search asks every protocol, and a setting a switch does not have is answered with a clear 'not supported' (#62).
