@@ -222,14 +222,14 @@ class SimEasySmart:
                 for p, s in sorted(c["storm"].items())
             ]
         if tag in (T.POE_RECOVERY, T.POE_GLOBAL_RECOVERY, T.POE_EXTEND) and c["poe_recovery"]:
-            # like the hardware: no answer for the global switch or extend mode while on
-            if tag == T.POE_GLOBAL_RECOVERY:
-                return None if c["poe_recovery_on"] else [(tag, b"\x00")]
+            # like the TL-SG108PE: the global switch comes along with the recovery rows (#119)
             if tag == T.POE_EXTEND:
-                if any(c["poe_extend"].values()):
-                    return None
-                return [(tag, bytes([p, 0])) for p in sorted(c["poe_extend"])]
-            return [(tag, T.pack_poe_recovery(r)) for _, r in sorted(c["poe_recovery"].items())]
+                return [(tag, bytes([p, c["poe_extend"][p]])) for p in sorted(c["poe_extend"])]
+            rows = [
+                (T.POE_RECOVERY, T.pack_poe_recovery(r))
+                for _, r in sorted(c["poe_recovery"].items())
+            ]
+            return [(T.POE_GLOBAL_RECOVERY, bytes([c["poe_recovery_on"]])), *rows]
         if tag == T.MTU_VLAN:
             return [(tag, bytes([c["mtu_vlan"], c["mtu_uplink"]]))]
         if tag == T.PORT_VLAN_ENABLED:
@@ -267,6 +267,16 @@ class SimEasySmart:
                 netmask=T.ipv4(values[T.NETMASK]),
                 gateway=T.ipv4(values[T.GATEWAY]),
             )
+        # PoE goes in groups (#119): recovery rows of every PoE port together with the global
+        # switch, and the extend mode of every PoE port
+        tags = [t for t, _ in tlvs]
+        poe_ports = len(c["poe_recovery"])
+        if T.POE_RECOVERY in tags and (
+            T.POE_GLOBAL_RECOVERY not in tags or tags.count(T.POE_RECOVERY) != poe_ports
+        ):
+            return 3
+        if T.POE_EXTEND in tags and tags.count(T.POE_EXTEND) != poe_ports:
+            return 3
         for tag, v in tlvs:
             if tag in system or tag in (T.USERNAME, T.PASSWORD):
                 continue

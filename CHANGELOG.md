@@ -23,6 +23,7 @@ All notable changes. Format: [Keep a Changelog](https://keepachangelog.com/en/1.
 - A bridged Docker network with a published port works for switches added by IP address; host networking is only needed for the search (#61).
 
 ### Fixed
+- TP-Link PoE: recovery and extend mode are written as the groups the switch expects (all PoE ports in one change); error 3 outside the system settings gets a neutral message (#120).
 - TP-Link: storm control per port, with the rate and the frame types of each port, like the switch's own page (#111).
 - TP-Link: port LEDs on and off (#113); the overview shows the hardware version (#112); the MTU VLAN uplink field is aligned (#110).
 - TP-Link: a switch that drops its session key is reached again with a new key, instead of staying 'not reachable' until a restart (#95).

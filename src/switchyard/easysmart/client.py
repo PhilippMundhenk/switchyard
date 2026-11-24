@@ -59,11 +59,16 @@ KEY_TIMEOUT = 3.0
 DEFAULT_USER = "admin"
 
 
+SYSTEM_TAGS = {2, 4, 5, 6, 9}  # name, IP, netmask, gateway, DHCP
+
+
 class EasySmartError(SwitchError):
     def __init__(self, code: int, tag: int = 0, write: bool = False):
         self.status = code
         self.tag = tag
         text = (WRITE_ERRORS.get(code) if write else None) or ERRORS.get(code)
+        if code == 3 and tag not in SYSTEM_TAGS:
+            text = "The switch wants related settings changed together and refused this change."
         super().__init__(text or f"The switch answered with error {code}.")
 
 
@@ -551,14 +556,17 @@ class EasySmartClient(SwitchDriver):
             if recovery is None:
                 return None
             rows = [T.poe_recovery(v) for v in recovery.values(T.POE_RECOVERY) if len(v) >= 20]
-            glob = await self._peek(T.POE_GLOBAL_RECOVERY)
+            # the global switch comes along with the recovery rows (TL-SG108PE, #119)
+            glob_value = recovery.first(T.POE_GLOBAL_RECOVERY)
+            if glob_value is None:
+                glob = await self._peek(T.POE_GLOBAL_RECOVERY)
+                glob_value = glob.first(T.POE_GLOBAL_RECOVERY) if glob else None
             extend = await self._peek(T.POE_EXTEND)
-        glob_value = glob.first(T.POE_GLOBAL_RECOVERY) if glob else None
         extend_rows = extend.values(T.POE_EXTEND) if extend else []
         ports = [r["port"] for r in rows]
         return {
             "ports": ports,
-            # None: the switch did not answer, which it does while the setting is on
+            # None: the switch did not answer
             "recovery_enabled": (glob_value[0] == 1) if glob_value else None,
             "recovery": {r["port"]: r for r in rows},
             "extend": {
@@ -570,38 +578,51 @@ class EasySmartClient(SwitchDriver):
     async def set_poe(self, settings: dict) -> None:
         """``{"recovery_enabled": bool, "recovery": {port: {...}}, "extend": {port: bool}}``.
 
-        The per-port recovery layout is confirmed; writing the global switch and extend mode
-        (``01``) follows from their 'off' values only and still needs confirming (#114).
+        The switch takes these as groups (#119): the global recovery switch together with the
+        recovery rows of every PoE port in one change, and the extend mode of every PoE port in
+        another. A single port's row alone is refused with error 3.
         """
         current = await self.read_poe()
         if current is None:
             self._unsupported("PoE settings")
-        tlvs = []
-        if settings.get("recovery_enabled") is not None:
-            tlvs.append((T.POE_GLOBAL_RECOVERY, bytes([1 if settings["recovery_enabled"] else 0])))
-        for port, cfg in sorted((int(k), v) for k, v in (settings.get("recovery") or {}).items()):
-            if port not in current["recovery"]:
+        ports = current["ports"]
+        recovery = settings.get("recovery") or {}
+        extend = settings.get("extend") or {}
+        for port in [*map(int, recovery), *map(int, extend)]:
+            if port not in ports:
                 raise ValueError(f"Port {port} has no PoE.")
-            row = {**current["recovery"][port], **cfg, "port": port}
-            ipaddress.IPv4Address(row["ip"])  # raises ValueError for a bad address
-            for key, low, high in (
-                ("startup_delay", 0, 65535),
-                ("interval", 1, 65535),
-                ("threshold", 1, 65535),
-                ("break_time", 0, 65535),
-            ):
-                if not low <= int(row[key]) <= high:
-                    name = key.replace("_", " ")
-                    raise ValueError(f"Port {port}: {name} must be {low} to {high}.")
-            if row["enabled"] and row["ip"] == "0.0.0.0":
-                raise ValueError(f"Port {port}: auto recovery needs an address to ping.")
-            tlvs.append((T.POE_RECOVERY, T.pack_poe_recovery(row)))
-        for port, on in sorted((int(k), v) for k, v in (settings.get("extend") or {}).items()):
-            if port not in current["recovery"]:
-                raise ValueError(f"Port {port} has no PoE.")
-            tlvs.append((T.POE_EXTEND, bytes([port, 1 if on else 0])))
-        for tlv in tlvs:  # one setting per write, like the vendor tool
-            await self.write([tlv], save=False)
+        if settings.get("recovery_enabled") is not None or recovery:
+            glob = settings.get("recovery_enabled")
+            if glob is None:
+                glob = bool(current["recovery_enabled"])
+            tlvs = [(T.POE_GLOBAL_RECOVERY, bytes([1 if glob else 0]))]
+            for port in ports:
+                row = {
+                    **current["recovery"][port],
+                    **recovery.get(port, recovery.get(str(port), {})),
+                }
+                row["port"] = port
+                ipaddress.IPv4Address(row["ip"])  # raises ValueError for a bad address
+                for key, low, high in (
+                    ("startup_delay", 0, 65535),
+                    ("interval", 1, 65535),
+                    ("threshold", 1, 65535),
+                    ("break_time", 0, 65535),
+                ):
+                    if not low <= int(row[key]) <= high:
+                        name = key.replace("_", " ")
+                        raise ValueError(f"Port {port}: {name} must be {low} to {high}.")
+                if row["enabled"] and row["ip"] == "0.0.0.0":
+                    raise ValueError(f"Port {port}: auto recovery needs an address to ping.")
+                tlvs.append((T.POE_RECOVERY, T.pack_poe_recovery(row)))
+            await self.write(tlvs, save=False)
+        if extend:
+            merged = {p: bool(current["extend"].get(p)) for p in ports}
+            merged.update({int(p): bool(on) for p, on in extend.items()})
+            await self.write(
+                [(T.POE_EXTEND, bytes([p, 1 if on else 0])) for p, on in sorted(merged.items())],
+                save=False,
+            )
         async with self.lock:
             await self._save()
 
