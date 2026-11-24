@@ -496,16 +496,18 @@ async function poeTab(host, S) {
   const state = (v) => (v === null ? '' : v ? 'on' : 'off');
   const glob = select(onOff(poe.recovery_enabled), state(poe.recovery_enabled), { 'data-testid': 'poe-recovery-global' });
   const row = {};
-  const num = (value, min, testid, label) => h('input', { type: 'number', min: String(min), max: '65535', value: String(value), class: 'short', 'aria-label': label, 'data-testid': testid });
+  // the ranges the switch accepts (#129)
+  const lim = poe.limits || {};
+  const num = (value, key, testid, label) => h('input', { type: 'number', min: String((lim[key] || [0])[0]), max: String((lim[key] || [0, 65535])[1]), value: String(value), class: 'short', 'aria-label': label, 'data-testid': testid });
   const body = h('tbody', {}, ...poe.ports.map((p) => {
     const r = poe.recovery[p];
     row[p] = {
       enabled: h('input', { type: 'checkbox', checked: r.enabled, 'aria-label': `Auto recovery on port ${p}`, 'data-testid': `poe-rec-${p}` }),
       ip: h('input', { type: 'text', value: r.ip === '0.0.0.0' ? '' : r.ip, placeholder: '192.168.0.10', inputmode: 'decimal', 'aria-label': `Ping address for port ${p}`, 'data-testid': `poe-ip-${p}` }),
-      startup_delay: num(r.startup_delay, 0, `poe-startup-${p}`, `Startup delay of port ${p}`),
-      interval: num(r.interval, 1, `poe-interval-${p}`, `Interval of port ${p}`),
-      threshold: num(r.threshold, 1, `poe-threshold-${p}`, `Failure threshold of port ${p}`),
-      break_time: num(r.break_time, 0, `poe-break-${p}`, `Break time of port ${p}`),
+      startup_delay: num(r.startup_delay, 'startup_delay', `poe-startup-${p}`, `Startup delay of port ${p}`),
+      interval: num(r.interval, 'interval', `poe-interval-${p}`, `Interval of port ${p}`),
+      threshold: num(r.threshold, 'threshold', `poe-threshold-${p}`, `Failure threshold of port ${p}`),
+      break_time: num(r.break_time, 'break_time', `poe-break-${p}`, `Break time of port ${p}`),
       extend: select(onOff(poe.extend[p]), state(poe.extend[p]), { 'aria-label': `Extend mode of port ${p}`, 'data-testid': `poe-extend-${p}` }),
     };
     const c = row[p];
@@ -519,6 +521,10 @@ async function poeTab(host, S) {
       const c = row[p];
       const ip = c.ip.value.trim() || '0.0.0.0';
       if (c.enabled.checked && ip === '0.0.0.0') return toast(`Port ${p}: enter the address to ping.`, 'error');
+      for (const key of ['startup_delay', 'interval', 'threshold', 'break_time']) {
+        const v = Number(c[key].value);
+        if (lim[key] && (v < lim[key][0] || v > lim[key][1])) return toast(`Port ${p}: ${key.replace('_', ' ')} must be ${lim[key][0]} to ${lim[key][1]}.`, 'error');
+      }
       payload.recovery[p] = { enabled: c.enabled.checked, ip, startup_delay: Number(c.startup_delay.value), interval: Number(c.interval.value), threshold: Number(c.threshold.value), break_time: Number(c.break_time.value) };
       if (c.extend.value) payload.extend[p] = c.extend.value === 'on';
     }
@@ -528,7 +534,8 @@ async function poeTab(host, S) {
     h('p', { class: 'muted' }, 'The switch pings a device on a PoE port and power-cycles the port when it stops answering: it starts after the startup delay and pings every interval; after the failure threshold of missed pings the port stays off for the break time (seconds).'),
     field('Auto recovery (whole switch)', glob, 'The switch takes the recovery settings of all PoE ports in one change, and the extend modes of all ports in another.'),
     h('div', { class: 'table-wrap' }, stackable(h('table', { class: 'controls', 'data-testid': 'poe-table' },
-      h('thead', {}, h('tr', {}, ...['Port', 'Recovery', 'Ping address', 'Startup delay', 'Interval', 'Failures', 'Break time', 'Extend mode'].map((t) => h('th', {}, t)))), body))),
+      h('thead', {}, h('tr', {}, ...['Port', 'Recovery', 'Ping address', 'Startup delay (s)', 'Interval (s)', 'Failures', 'Break time (s)', 'Extend mode'].map((t) => h('th', {}, t)))), body))),
+    lim.startup_delay ? h('p', { class: 'muted', 'data-testid': 'poe-limits' }, `Allowed: startup delay ${lim.startup_delay[0]}–${lim.startup_delay[1]} s, interval ${lim.interval[0]}–${lim.interval[1]} s, failures ${lim.threshold[0]}–${lim.threshold[1]}, break time ${lim.break_time[0]}–${lim.break_time[1]} s.`) : null,
     h('p', { class: 'muted' }, 'Extend mode: longer cables at a lower speed, as on the switch\'s own page.'),
     h('p', {}, save)));
 }

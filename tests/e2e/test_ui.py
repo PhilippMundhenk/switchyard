@@ -855,10 +855,16 @@ def test_tplink_poe_auto_recovery(app):
     app.get_by_test_id("poe-save").click()
     expect(app.locator(".toast").last).to_contain_text("enter the address")
     app.get_by_test_id("poe-ip-2").fill("192.168.0.111")
+    # the ranges the switch accepts are shown (#129)
+    expect(app.get_by_test_id("poe-limits")).to_contain_text("startup delay 30")
+    app.get_by_test_id("poe-interval-2").fill("5")
+    app.get_by_test_id("poe-save").click()
+    expect(app.locator(".toast").last).to_contain_text("interval must be 10 to 120")
+    app.get_by_test_id("poe-interval-2").fill("30")
     app.get_by_test_id("poe-save").click()
     expect(app.locator(".toast").last).to_contain_text("PoE settings saved")
     rec = api(app, "GET", f"/devices/{tp}/state").json()["poe"]["recovery"]["2"]
-    assert rec["enabled"] and rec["ip"] == "192.168.0.111"
+    assert rec["enabled"] and rec["ip"] == "192.168.0.111" and rec["interval"] == 30
     add_switch(app, MAC)  # the NETGEAR demo switch has no PoE settings: no PoE tab
     open_tab(app, "poe")
     expect(app.get_by_test_id("tab-not-here")).to_be_visible()
