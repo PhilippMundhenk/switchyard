@@ -137,7 +137,7 @@ def test_tplink_switch_asks_for_user_and_password(app):
     expect(app.get_by_test_id("unsupported")).to_contain_text("firmware upgrade")
     expect(app.get_by_test_id("fw-file")).to_have_count(0)
     open_tab(app, "cable", tp)
-    expect(app.get_by_test_id("unsupported")).to_contain_text("cable test")
+    expect(app.get_by_test_id("unsupported")).to_contain_text("switch's own web interface")
 
 
 def test_cancelling_the_password_dialog_changes_nothing(app):
@@ -837,11 +837,12 @@ def test_tplink_leds_off_and_on(app):
     tp = "50:c7:bf:5e:00:01"
     add_switch(app, tp)
     api(app, "POST", f"/devices/{tp}/login", {"password": "admin", "username": "admin"})
-    open_tab(app, "features", tp)
+    open_tab(app, "network", tp)  # with the switch's other settings (#121)
     app.get_by_test_id("led-enabled").uncheck()
     app.get_by_test_id("led-save").click()
     expect(app.locator(".toast").last).to_contain_text("Port LEDs saved")
     assert api(app, "GET", f"/devices/{tp}/state").json()["led"] is False
+    expect(app.get_by_test_id("led-enabled")).not_to_be_checked()  # refreshed after saving
 
 
 def test_tplink_poe_auto_recovery(app):
