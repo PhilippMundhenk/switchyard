@@ -10,9 +10,9 @@ export async function renderDetail(main, ctx, route) {
   const host = h('div', { 'data-testid': 'tab-body' });
   const header = h('div', { class: 'page-head' });
   const tabs = h('nav', { class: 'tabs', 'aria-label': 'Switch sections' },
-    ...TABS.map((t) => h('a', { href: `#/switch/${encodeURIComponent(mac)}/${t.id}`, 'aria-current': t.id === tab.id ? 'page' : null, 'data-testid': `tab-${t.id}` }, t.label)));
+    ...TABS.map((t) => h('a', { href: `#/switch/${encodeURIComponent(mac)}/${t.id}`, title: t.title || null, 'aria-current': t.id === tab.id ? 'page' : null, 'data-testid': `tab-${t.id}` }, t.label)));
   const picker = h('select', { class: 'tab-select', 'aria-label': 'Section', 'data-testid': 'tab-select' },
-    ...TABS.map((t) => h('option', { value: t.id, selected: t.id === tab.id }, t.label)));
+    ...TABS.map((t) => h('option', { value: t.id, selected: t.id === tab.id }, t.title || t.label)));
   picker.addEventListener('change', () => ctx.navigate(`#/switch/${encodeURIComponent(mac)}/${picker.value}`));
   const busy = h('span', { class: 'tag busy', role: 'status', 'data-testid': 'refreshing', hidden: true }, 'Updating…');
   let left = false;
@@ -82,6 +82,17 @@ export async function renderDetail(main, ctx, route) {
     return;
   }
   S.retitle = title;
+  // only the sections this switch has (no PoE on NETGEAR, no LAG on a GS108E v1, ...)
+  const shown = (t) => !t.shown || t.shown(S.state);
+  for (const t of TABS) {
+    const visible = shown(t);
+    tabs.querySelector(`[data-testid="tab-${t.id}"]`).hidden = !visible;
+    picker.querySelector(`option[value="${t.id}"]`).hidden = !visible;
+  }
+  if (!shown(tab)) {
+    host.append(h('p', { class: 'muted', 'data-testid': 'tab-not-here' }, 'This switch does not have this section.'));
+    return;
+  }
   // phone and desktop use different layouts for some sections: redraw when the width changes
   const mq = window.matchMedia('(max-width: 640px)');
   const onWidth = () => S.show();

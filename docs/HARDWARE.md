@@ -93,7 +93,7 @@ keep the cable to the computer running Switchyard where it is.
 
 4. *Search network*. Does the switch show up as "TP-Link TL-SG108PE"? Add it.
 5. Open it and go through *Overview*, *Ports*, *VLAN*, *QoS*, *Mirroring & multicast*,
-   *Speed & flow* and *Link aggregation*. Do the values match the switch's own web page?
+   *Speed & flow* and *LAG* (link aggregation). Do the values match the switch's own web page?
 6. *Maintenance*, *Diagnostics*, *Scan settings*, then *Copy for bug report*. If PoE devices are
    connected, do this once with a powered device on a PoE port and once without: the raw values
    are what is needed to add PoE.
@@ -107,7 +107,7 @@ keep the cable to the computer running Switchyard where it is.
    to *auto*. Then switch the unused port off and on.
 10. *QoS*: set an ingress limit on an unused port, apply, remove it again.
 11. *Mirroring*: mirror one unused port to another, apply, then switch mirroring off.
-12. *Link aggregation*: put two unused ports of the same half (3 and 4, or 7 and 8) into a group,
+12. *LAG* (link aggregation): put two unused ports of the same half (3 and 4, or 7 and 8) into a group,
     apply, then remove the group.
 13. *VLAN*, only if the switch has no VLAN configuration you need (switching the mode resets the
     table): switch to 802.1Q, add VLAN 99 with an unused port tagged, apply, then delete VLAN 99.
