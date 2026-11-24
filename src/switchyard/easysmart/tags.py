@@ -302,9 +302,18 @@ def pack_storm(port: int, kbps: int, unicast=True, multicast=True, broadcast=Tru
     return bytes([port, 1 if on else 0, *flags]) + (kbps if on else 0).to_bytes(4, "big")
 
 
-# PoE auto recovery, per port (20 bytes, confirmed by a tester's scans, #114):
+# PoE auto recovery, per port (20 bytes as read, confirmed by a tester's scans, #114):
 # port, ping IPv4, startup delay s, interval s, failure threshold, break time s (u16 each),
-# 6 bytes of unknown meaning (kept as read), enabled (1 = on)
+# 6 bytes that are probably the statistics (failures, reboots, total pings; #128), enabled
+# The tester's TL-SG108PE accepts these ranges (#129):
+POE_RANGES = {
+    "startup_delay": (30, 600),
+    "interval": (10, 120),
+    "threshold": (1, 10),
+    "break_time": (3, 120),
+}
+
+
 def poe_recovery(value: bytes) -> dict:
     return {
         "port": value[0],
@@ -318,8 +327,9 @@ def poe_recovery(value: bytes) -> dict:
     }
 
 
-def pack_poe_recovery(cfg: dict) -> bytes:
-    rest = bytes.fromhex(cfg.get("_rest") or "00" * 6)
+def pack_poe_recovery(cfg: dict, short: bool = False) -> bytes:
+    """The row as read (20 bytes), or without the statistics (14 bytes, ``short``)."""
+    rest = b"" if short else bytes.fromhex(cfg.get("_rest") or "00" * 6)[:6].ljust(6, b"\x00")
     return (
         bytes([cfg["port"]])
         + pack_ipv4(cfg["ip"])
@@ -327,6 +337,6 @@ def pack_poe_recovery(cfg: dict) -> bytes:
             int(cfg[k]).to_bytes(2, "big")
             for k in ("startup_delay", "interval", "threshold", "break_time")
         )
-        + rest[:6].ljust(6, b"\x00")
+        + rest
         + bytes([1 if cfg["enabled"] else 0])
     )

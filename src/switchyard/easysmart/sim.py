@@ -54,6 +54,9 @@ class SimEasySmart:
     write_delay: float = 0.0  # answer changes this late (some take the real switch seconds)
     key_delay: float = 0.0  # answer the session key exchange this late
     ignore_keys: bool = False  # stay silent on key exchanges (a switch that is busy)
+    # PoE recovery rows this switch takes: "short" (no statistics, 14 bytes) or "full" (20);
+    # others are answered with 'OK' and ignored, as a TL-SG108PE did (#128)
+    poe_write_layout: str = "short"
     traffic: bool = True
 
     def __post_init__(self):
@@ -371,10 +374,13 @@ class SimEasySmart:
         elif tag == T.POE_GLOBAL_RECOVERY and c["poe_recovery"]:
             c["poe_recovery_on"] = v[0] == 1
         elif tag == T.POE_RECOVERY and c["poe_recovery"]:
-            row = T.poe_recovery(v)
-            if row["port"] not in c["poe_recovery"]:
+            if v[0] not in c["poe_recovery"]:
                 return 7503
-            c["poe_recovery"][row["port"]] = row
+            if len(v) != {"short": 14, "full": 20}.get(self.poe_write_layout):
+                return 0  # 'OK', but nothing changes
+            old = c["poe_recovery"][v[0]]
+            full = v if len(v) == 20 else v[:13] + bytes.fromhex(old["_rest"]) + v[13:14]
+            c["poe_recovery"][v[0]] = T.poe_recovery(full)
         elif tag == T.POE_EXTEND and c["poe_extend"]:
             if v[0] not in c["poe_extend"]:
                 return 7503

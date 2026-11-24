@@ -393,6 +393,12 @@ Gen A: a GET 8705 returns 8704, all 8705 rows, then 8707; a GET 8706 returns 870
 | 14080 (0x3700) | u8 global auto recovery, `00` off, `01` on | comes along with a read of 0x3800; writing it alone works (#119) |
 | 14592 (0x3900) | rows of 2 B: u8 port, u8 extend mode, `00` off, `01` on | write the rows of all PoE ports in one change, else error 3 (#119) |
 
+Writing a row as read (with the 6 bytes, probably the statistics failures, reboots and total
+pings) was answered with error 0 but ignored on the TL-SG108PE (#128). Switchyard checks every
+recovery change against the switch's answer and otherwise sends rows without those bytes (port,
+address, four u16, enabled: 14 bytes), remembering what works. Ranges the tester's switch
+accepts: startup delay 30-600 s, interval 10-120 s, failure threshold 1-10, break time 3-120 s.
+
 Recovery rows are refused with error 3 unless the global switch (0x3700) and the rows of all PoE
 ports go in one change (#119). Switchyard keeps the 6 unknown bytes as read when it writes a row.
 An earlier settings scan got no answer for 0x3700 and 0x3900 while they were on; later reads did.

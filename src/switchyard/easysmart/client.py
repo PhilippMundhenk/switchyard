@@ -128,6 +128,8 @@ class EasySmartClient(SwitchDriver):
         self.session_token: bool | None = None
         # True once the switch accepted a session key: it is never treated as older firmware again
         self.session_capable: bool | None = None
+        # how this switch takes PoE recovery rows: "full" (as read) or "short" (#128)
+        self.poe_layout: str | None = None
         self.ports: int | None = None
         self.auto_save: bool | None = None
         self.unsupported: set[int] = set()
@@ -569,6 +571,7 @@ class EasySmartClient(SwitchDriver):
             # None: the switch did not answer
             "recovery_enabled": (glob_value[0] == 1) if glob_value else None,
             "recovery": {r["port"]: r for r in rows},
+            "limits": T.POE_RANGES,
             "extend": {
                 p: next((v[1] == 1 for v in extend_rows if len(v) >= 2 and v[0] == p), None)
                 for p in ports
@@ -595,7 +598,7 @@ class EasySmartClient(SwitchDriver):
             glob = settings.get("recovery_enabled")
             if glob is None:
                 glob = bool(current["recovery_enabled"])
-            tlvs = [(T.POE_GLOBAL_RECOVERY, bytes([1 if glob else 0]))]
+            wanted = {}
             for port in ports:
                 row = {
                     **current["recovery"][port],
@@ -603,19 +606,15 @@ class EasySmartClient(SwitchDriver):
                 }
                 row["port"] = port
                 ipaddress.IPv4Address(row["ip"])  # raises ValueError for a bad address
-                for key, low, high in (
-                    ("startup_delay", 0, 65535),
-                    ("interval", 1, 65535),
-                    ("threshold", 1, 65535),
-                    ("break_time", 0, 65535),
-                ):
-                    if not low <= int(row[key]) <= high:
-                        name = key.replace("_", " ")
-                        raise ValueError(f"Port {port}: {name} must be {low} to {high}.")
+                if port in recovery or str(port) in recovery:
+                    for key, (low, high) in T.POE_RANGES.items():
+                        if not low <= int(row[key]) <= high:
+                            name = key.replace("_", " ")
+                            raise ValueError(f"Port {port}: {name} must be {low} to {high}.")
                 if row["enabled"] and row["ip"] == "0.0.0.0":
                     raise ValueError(f"Port {port}: auto recovery needs an address to ping.")
-                tlvs.append((T.POE_RECOVERY, T.pack_poe_recovery(row)))
-            await self.write(tlvs, save=False)
+                wanted[port] = row
+            await self._write_recovery(glob, wanted, current)
         if extend:
             merged = {p: bool(current["extend"].get(p)) for p in ports}
             merged.update({int(p): bool(on) for p, on in extend.items()})
@@ -625,6 +624,37 @@ class EasySmartClient(SwitchDriver):
             )
         async with self.lock:
             await self._save()
+
+    async def _write_recovery(self, glob: bool, wanted: dict[int, dict], current: dict) -> None:
+        """Write the global switch with every PoE port's recovery row, and check that the
+        switch took it: a TL-SG108PE answered 'OK' but kept the old values (#128). Rows go
+        as read (with the statistics) or without them; the layout that works is remembered."""
+        keys = ("ip", "startup_delay", "interval", "threshold", "break_time", "enabled")
+        changed = [
+            p
+            for p, row in wanted.items()
+            if any(str(row[k]) != str(current["recovery"][p][k]) for k in keys)
+        ]
+        layouts = [self.poe_layout] if self.poe_layout else ["full", "short"]
+        for layout in layouts:
+            tlvs = [(T.POE_GLOBAL_RECOVERY, bytes([1 if glob else 0]))]
+            tlvs += [
+                (T.POE_RECOVERY, T.pack_poe_recovery(row, short=layout == "short"))
+                for _, row in sorted(wanted.items())
+            ]
+            await self.write(tlvs, save=False)
+            after = await self.read_poe()
+            took = all(
+                str(after["recovery"][p][k]) == str(wanted[p][k]) for p in changed for k in keys
+            ) and (after["recovery_enabled"] in (None, glob))
+            if took:
+                if changed:
+                    self.poe_layout = layout
+                return
+        raise SwitchError(
+            "The switch accepted the PoE recovery settings but did not take them. "
+            "Please report this with the protocol log."
+        )
 
     async def read_part(self, part: str):
         if part in ("vlan", "qos", "lag", "features"):

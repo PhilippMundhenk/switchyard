@@ -734,3 +734,26 @@ async def test_poe_auto_recovery_and_extend(tptransport, tpsim):
     assert await b.read_poe() is None
     with pytest.raises(Unsupported):
         await b.set_poe({"extend": {1: True}})
+
+
+async def test_poe_recovery_is_checked_and_falls_back(tptransport, tpsim):
+    """The switch answered OK but kept the old row (#128): check, try the short layout."""
+    a = tpsim.switches[0]
+    c = client_for(tptransport, MAC_A)
+    assert a.poe_write_layout == "short"
+    await c.set_poe({"recovery": {2: {"enabled": True, "ip": "192.168.0.112", "interval": 61}}})
+    assert c.poe_layout == "short"
+    assert a.config["poe_recovery"][2]["interval"] == 61 and a.config["poe_recovery"][2]["enabled"]
+    # a switch that takes neither layout: a clear error instead of 'saved'
+    d = client_for(tptransport, MAC_A)
+    a.poe_write_layout = "none"
+    with pytest.raises(Exception, match="did not take them"):
+        await d.set_poe({"recovery": {3: {"enabled": True, "ip": "192.168.0.113"}}})
+    # ranges of the tester's switch
+    a.poe_write_layout = "full"
+    e = client_for(tptransport, MAC_A)
+    with pytest.raises(ValueError, match="interval must be 10 to 120"):
+        await e.set_poe({"recovery": {2: {"interval": 5}}})
+    await e.set_poe({"recovery": {4: {"enabled": True, "ip": "192.168.0.114"}}})
+    assert e.poe_layout == "full" and a.config["poe_recovery"][4]["enabled"]
+    assert (await e.read_poe())["limits"]["startup_delay"] == (30, 600)
