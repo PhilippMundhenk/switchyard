@@ -905,3 +905,10 @@ def test_netgear_has_no_per_port_storm_control(client, office):
 def test_netgear_has_no_poe_settings(client, office):
     r = client.put(f"/api/devices/{office}/poe", json={"extend": {"1": True}})
     assert r.status_code == 409 and r.json()["code"] == "unsupported"
+
+
+def test_protocol_log_shows_response_times(client, office):
+    client.get(f"/api/devices/{office}/state?parts=features")
+    entries = client.get("/api/log").json()["entries"]
+    rx = [e for e in entries if e["direction"] == "rx" and e["device"] == office]
+    assert rx and all(" ms" in e["summary"] and "answered after" in e["summary"] for e in rx)

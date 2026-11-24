@@ -412,6 +412,7 @@ def test_api_with_tplink(tmp_path, sim, tpsim):
         assert any(t["answered"] for t in diag["tags"])
         log = c.get("/api/log").json()["entries"]
         assert any("TP-Link" in e["summary"] for e in log)
+        assert any("answered after" in e["summary"] for e in log if e["direction"] == "rx")
         assert all("61646d696e00" not in e["hex"] for e in log)  # "admin\0" never logged
         r = c.post(f"/api/devices/{MAC_A}/login", json={"password": "bad", "username": "admin"})
         assert r.status_code == 409 and r.json()["code"] == "switch_auth"
