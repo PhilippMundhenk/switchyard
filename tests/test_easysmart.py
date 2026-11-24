@@ -709,8 +709,18 @@ async def test_poe_auto_recovery_and_extend(tptransport, tpsim):
         "02c0a8006f003c003c0003000f00000000000001"
     )
     poe = await c.read_poe()
-    assert poe["recovery_enabled"] is None and poe["extend"][3] is None  # silent while on
+    assert poe["recovery_enabled"] is True and poe["extend"][3] is True
     assert poe["recovery"][2]["ip"] == "192.168.0.111" and poe["recovery"][2]["enabled"]
+    # one port alone is refused, as on the TL-SG108PE (#119)
+    from switchyard.easysmart.client import EasySmartError
+
+    with pytest.raises(EasySmartError, match="related settings"):
+        await c.write([(T.POE_EXTEND, bytes([2, 1]))])
+    with pytest.raises(EasySmartError, match="related settings"):
+        await c.write([(T.POE_RECOVERY, T.pack_poe_recovery(poe["recovery"][2]))])
+    # extend mode alone changes only extend mode
+    await c.set_poe({"extend": {2: True}})
+    assert a.config["poe_extend"][2] and a.config["poe_recovery"][2]["ip"] == "192.168.0.111"
     with pytest.raises(ValueError, match="address to ping"):
         await c.set_poe({"recovery": {1: {"enabled": True}}})
     with pytest.raises(ValueError, match="no PoE"):

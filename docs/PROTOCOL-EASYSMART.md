@@ -390,10 +390,12 @@ Gen A: a GET 8705 returns 8704, all 8705 rows, then 8707; a GET 8706 returns 870
 | Type | Layout | Notes |
 |---|---|---|
 | 14336 (0x3800) | rows of 20 B: u8 port, IPv4 ping address, u16 startup delay s, u16 interval s, u16 failure threshold, u16 break time s, 6 B unknown (0 in all scans), u8 enabled | defaults 60, 60, 5, 15; read with a configured port 2: `02 c0a8b26f 003c 003c 0005 000f 000000000000 01` |
-| 14080 (0x3700) | u8 global auto recovery, `00` = off | **no answer while on**; writing `01` is inferred |
-| 14592 (0x3900) | rows of 2 B: u8 port, u8 extend mode, `00` = off | **no answer while any port is on**; writing `01` is inferred |
+| 14080 (0x3700) | u8 global auto recovery, `00` off, `01` on | comes along with a read of 0x3800; writing it alone works (#119) |
+| 14592 (0x3900) | rows of 2 B: u8 port, u8 extend mode, `00` off, `01` on | write the rows of all PoE ports in one change, else error 3 (#119) |
 
-Switchyard keeps the 6 unknown bytes as read when it writes a recovery row.
+Recovery rows are refused with error 3 unless the global switch (0x3700) and the rows of all PoE
+ports go in one change (#119). Switchyard keeps the 6 unknown bytes as read when it writes a row.
+An earlier settings scan got no answer for 0x3700 and 0x3900 while they were on; later reads did.
 
 Earlier notes (status and configuration tags):
 

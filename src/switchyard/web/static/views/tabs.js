@@ -478,13 +478,13 @@ async function qos(host, S) {
 }
 
 // --------------------------------------------------------------------- poe
-// PoE auto recovery and extend mode (TP-Link, #114). The switch does not answer its global
-// recovery switch and extend mode while they are on: those show as "unknown".
+// PoE auto recovery and extend mode (TP-Link, #114, #119). A setting the switch did not answer
+// shows as "unknown" and is left as it is unless changed.
 async function poeTab(host, S) {
   const poe = S.state.poe;
   if (!poe) return host.append(section('PoE', unsupported('PoE configuration')));
   const apply = applier(S);
-  const onOff = (v) => [['', v === null ? 'unknown (probably on)' : '–'], ['on', 'on'], ['off', 'off']];
+  const onOff = (v) => [...(v === null ? [['', 'unknown (leave as is)']] : []), ['on', 'on'], ['off', 'off']];
   const state = (v) => (v === null ? '' : v ? 'on' : 'off');
   const glob = select(onOff(poe.recovery_enabled), state(poe.recovery_enabled), { 'data-testid': 'poe-recovery-global' });
   const row = {};
@@ -518,7 +518,7 @@ async function poeTab(host, S) {
   });
   host.append(section('PoE auto recovery',
     h('p', { class: 'muted' }, 'The switch pings a device on a PoE port and power-cycles the port when it stops answering: it starts after the startup delay and pings every interval; after the failure threshold of missed pings the port stays off for the break time (seconds).'),
-    field('Auto recovery (whole switch)', glob, "Switching this or extend mode on is not yet confirmed on a real switch: check the result on the switch's own page."),
+    field('Auto recovery (whole switch)', glob, 'The switch takes the recovery settings of all PoE ports in one change, and the extend modes of all ports in another.'),
     h('div', { class: 'table-wrap' }, stackable(h('table', { class: 'controls', 'data-testid': 'poe-table' },
       h('thead', {}, h('tr', {}, ...['Port', 'Recovery', 'Ping address', 'Startup delay', 'Interval', 'Failures', 'Break time', 'Extend mode'].map((t) => h('th', {}, t)))), body))),
     h('p', { class: 'muted' }, 'Extend mode: longer cables at a lower speed, as on the switch\'s own page.'),
